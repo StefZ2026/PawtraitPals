@@ -1,9 +1,7 @@
 import { users, type User, type UpsertUser } from "@shared/models/auth";
-import { db } from "../../db";
+import { db } from "./db";
 import { eq } from "drizzle-orm";
 
-// Interface for auth storage operations
-// (IMPORTANT) These user operations are mandatory for Replit Auth.
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
@@ -20,7 +18,6 @@ class AuthStorage implements IAuthStorage {
     if (userData.id) {
       const existingById = await this.getUser(userData.id);
       if (existingById) {
-        // Update existing user
         const [updated] = await db
           .update(users)
           .set({ ...userData, updatedAt: new Date() })
@@ -29,12 +26,11 @@ class AuthStorage implements IAuthStorage {
         return updated;
       }
     }
-    
-    // Check if user exists by email (for testing scenarios)
+
+    // Check if user exists by email
     if (userData.email) {
       const [existingByEmail] = await db.select().from(users).where(eq(users.email, userData.email));
       if (existingByEmail) {
-        // Update existing user by email
         const [updated] = await db
           .update(users)
           .set({ ...userData, updatedAt: new Date() })
@@ -43,7 +39,7 @@ class AuthStorage implements IAuthStorage {
         return updated;
       }
     }
-    
+
     // Insert new user, handle race condition on email uniqueness
     try {
       const [user] = await db

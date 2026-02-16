@@ -3,7 +3,7 @@ import { pgTable, text, varchar, serial, integer, timestamp, boolean } from "dri
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Re-export auth models (sessions and users tables for Replit Auth)
+// Re-export auth models (users and sessions tables)
 export * from "./models/auth";
 
 // Subscription plans for organizations

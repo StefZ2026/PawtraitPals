@@ -3,7 +3,7 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import type { InsertOrganization } from "@shared/schema";
 import { z } from "zod";
-import { generateImage, editImage } from "./replit_integrations/image/client";
+import { generateImage, editImage } from "./gemini";
 import { isAuthenticated, registerAuthRoutes } from "./auth";
 import { stripeService } from "./stripeService";
 import { getStripePublishableKey, getUncachableStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal } from "./stripeClient";
@@ -1709,7 +1709,15 @@ export async function registerRoutes(
 
       if (portraitId) {
         const portrait = await storage.getPortrait(parseInt(portraitId));
-        if (portrait && portrait.editCount >= MAX_EDITS_PER_IMAGE) {
+        if (!portrait) return res.status(404).json({ error: "Portrait not found" });
+
+        // Verify portrait belongs to the user's org
+        const dog = await storage.getDog(portrait.dogId);
+        if (!dog || dog.organizationId !== org.id) {
+          return res.status(403).json({ error: "Not authorized to edit this portrait" });
+        }
+
+        if (portrait.editCount >= MAX_EDITS_PER_IMAGE) {
           return res.status(403).json({
             error: `You've used all ${MAX_EDITS_PER_IMAGE} edits for this portrait. Try a different style!`,
             editCount: portrait.editCount,

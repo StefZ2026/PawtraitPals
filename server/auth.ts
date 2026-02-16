@@ -1,9 +1,6 @@
-// Supabase Auth middleware for Pawtrait Pals
-// Replaces Replit OIDC auth with Supabase JWT-based auth
-
 import { createClient } from '@supabase/supabase-js';
 import type { Express, RequestHandler } from 'express';
-import { authStorage } from './replit_integrations/auth/storage';
+import { authStorage } from './auth-storage';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
