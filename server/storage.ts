@@ -34,7 +34,7 @@ export interface IStorage {
   getAllOrganizations(): Promise<Organization[]>;
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, org: Partial<InsertOrganization>): Promise<Organization | undefined>;
-  updateOrganizationStripeInfo(id: number, stripeInfo: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; subscriptionStatus?: string }): Promise<Organization | undefined>;
+  updateOrganizationStripeInfo(id: number, stripeInfo: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; subscriptionStatus?: string; stripeTestMode?: boolean }): Promise<Organization | undefined>;
   clearOrganizationOwner(id: number): Promise<void>;
   deleteOrganization(id: number): Promise<void>;
 
@@ -120,7 +120,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateOrganizationStripeInfo(id: number, stripeInfo: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; subscriptionStatus?: string }): Promise<Organization | undefined> {
+  async updateOrganizationStripeInfo(id: number, stripeInfo: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; subscriptionStatus?: string; stripeTestMode?: boolean }): Promise<Organization | undefined> {
     const [updated] = await db.update(organizations).set(stripeInfo).where(eq(organizations.id, id)).returning();
     return updated;
   }

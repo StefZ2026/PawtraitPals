@@ -55,6 +55,7 @@ export const organizations = pgTable("organizations", {
   planId: integer("plan_id").references(() => subscriptionPlans.id),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeTestMode: boolean("stripe_test_mode").default(false).notNull(),
   subscriptionStatus: text("subscription_status").default("trial"), // trial, active, past_due, canceled
   trialEndsAt: timestamp("trial_ends_at"),
   hasUsedFreeTrial: boolean("has_used_free_trial").default(false).notNull(),

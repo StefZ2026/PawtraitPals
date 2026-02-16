@@ -1,4 +1,4 @@
-import { getUncachableStripeClient, mapStripeStatusToInternal } from './stripeClient';
+import { getStripeClient, getWebhookSecret, mapStripeStatusToInternal } from './stripeClient';
 import { storage } from './storage';
 import { stripeService } from './stripeService';
 import { handleCancellation } from './subscription';
@@ -14,10 +14,19 @@ export class WebhookHandlers {
       );
     }
 
-    // Verify webhook signature using standard Stripe SDK
-    const stripe = await getUncachableStripeClient();
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
-    const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    // Try live webhook secret first, then test
+    let event;
+    const liveStripe = getStripeClient(false);
+    const testStripe = getStripeClient(true);
+    const liveSecret = getWebhookSecret(false);
+    const testSecret = getWebhookSecret(true);
+
+    try {
+      event = liveStripe.webhooks.constructEvent(payload, signature, liveSecret);
+    } catch {
+      // If live verification fails, try test webhook secret
+      event = testStripe.webhooks.constructEvent(payload, signature, testSecret);
+    }
 
     await WebhookHandlers.handleEvent(event);
   }
@@ -41,6 +50,7 @@ export class WebhookHandlers {
           break;
         }
 
+        const testMode = org.stripeTestMode;
         const newStatus = mapStripeStatusToInternal(data.status, org.subscriptionStatus);
 
         if (newStatus === 'canceled') {
@@ -66,7 +76,7 @@ export class WebhookHandlers {
         }
 
         try {
-          const addonPriceId = await stripeService.getAddonPriceId();
+          const addonPriceId = await stripeService.getAddonPriceId(testMode);
           const subItems = data.items?.data || [];
           const addonItem = subItems.find((item: any) => {
             const priceId = typeof item.price === 'string' ? item.price : item.price?.id;

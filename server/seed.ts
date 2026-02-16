@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { pool } from "./db";
 import { portraitStyles, subscriptionPlans } from "@shared/schema";
 import { portraitStyles as styleOptions } from "../client/src/lib/portrait-styles";
 import { eq, notInArray } from "drizzle-orm";
@@ -54,6 +55,18 @@ const planDefinitions = [
 
 export async function seedDatabase() {
   console.log("Checking if seed data exists...");
+
+  // Migration: add stripe_test_mode column if it doesn't exist
+  try {
+    await pool.query('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_test_mode BOOLEAN DEFAULT false NOT NULL');
+    // Mark existing Stripe-connected orgs as test mode (all current data is from test Stripe)
+    const migResult = await pool.query('UPDATE organizations SET stripe_test_mode = true WHERE stripe_customer_id IS NOT NULL AND stripe_test_mode = false');
+    if (migResult.rowCount && migResult.rowCount > 0) {
+      console.log(`[migration] Set ${migResult.rowCount} existing org(s) to Stripe test mode`);
+    }
+  } catch (migErr: any) {
+    console.log('[migration] stripe_test_mode:', migErr.message);
+  }
 
   await seedSubscriptionPlans();
 

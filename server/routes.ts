@@ -6,8 +6,9 @@ import { z } from "zod";
 import { generateImage, editImage } from "./gemini";
 import { isAuthenticated, registerAuthRoutes } from "./auth";
 import { stripeService } from "./stripeService";
-import { getStripePublishableKey, getUncachableStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal } from "./stripeClient";
+import { getStripePublishableKey, getStripeClient, getUncachableStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal, getPriceId } from "./stripeClient";
 import rateLimit from "express-rate-limit";
+import Twilio from "twilio";
 import { containsInappropriateLanguage } from "./content-filter";
 import { generateShowcaseMockup, generatePawfileMockup } from "./generate-mockups";
 import { isValidBreed } from "./breeds";
@@ -60,6 +61,7 @@ async function validateAndCleanStripeData(orgId: number): Promise<{ customerId: 
   const org = await storage.getOrganization(orgId);
   if (!org) return { customerId: null, subscriptionId: null, subscriptionStatus: null, cleaned: false };
 
+  const testMode = org.stripeTestMode;
   let cleaned = false;
   let validCustomerId = org.stripeCustomerId || null;
   let validSubscriptionId = org.stripeSubscriptionId || null;
@@ -67,7 +69,7 @@ async function validateAndCleanStripeData(orgId: number): Promise<{ customerId: 
 
   if (validCustomerId) {
     try {
-      const stripe = await getUncachableStripeClient();
+      const stripe = getStripeClient(testMode);
       const customer = await stripe.customers.retrieve(validCustomerId);
       if ((customer as any).deleted) {
         console.warn(`[stripe-cleanup] Customer ${validCustomerId} is deleted in Stripe for org ${orgId}, clearing`);
@@ -87,7 +89,7 @@ async function validateAndCleanStripeData(orgId: number): Promise<{ customerId: 
 
   if (validSubscriptionId) {
     try {
-      const stripe = await getUncachableStripeClient();
+      const stripe = getStripeClient(testMode);
       const sub = await stripe.subscriptions.retrieve(validSubscriptionId);
       if (sub.status === 'canceled' || sub.status === 'incomplete_expired') {
         console.warn(`[stripe-cleanup] Subscription ${validSubscriptionId} is ${sub.status} in Stripe for org ${orgId}, clearing`);
@@ -205,11 +207,11 @@ export async function registerRoutes(
       }
 
       try {
-        const stripe = await getUncachableStripeClient();
         const allOrgsForSync = await storage.getAllOrganizations();
         const orgsWithStripe = allOrgsForSync.filter(o => o.stripeSubscriptionId);
         for (const org of orgsWithStripe) {
           try {
+            const stripe = getStripeClient(org.stripeTestMode);
             const sub = await stripe.subscriptions.retrieve(org.stripeSubscriptionId!);
             const newStatus = mapStripeStatusToInternal(sub.status, org.subscriptionStatus);
             const priceId = sub.items?.data?.[0]?.price?.id;
@@ -330,7 +332,7 @@ export async function registerRoutes(
 
         if (org.stripeCustomerId && !org.stripeSubscriptionId && org.subscriptionStatus !== 'active') {
           try {
-            const stripe = await getUncachableStripeClient();
+            const stripe = getStripeClient(org.stripeTestMode);
             const customer = await stripe.customers.retrieve(org.stripeCustomerId);
             if ((customer as any).deleted) {
               await storage.updateOrganizationStripeInfo(org.id, { stripeCustomerId: null, stripeSubscriptionId: null });
@@ -696,8 +698,9 @@ export async function registerRoutes(
   // Stripe billing routes
   app.get("/api/stripe/publishable-key", async (req: Request, res: Response) => {
     try {
-      const key = await getStripePublishableKey();
-      res.json({ publishableKey: key });
+      const testMode = req.query.testMode === 'true';
+      const key = getStripePublishableKey(testMode);
+      res.json({ publishableKey: key, testMode });
     } catch (error) {
       console.error("Error fetching Stripe key:", error);
       res.status(500).json({ error: "Failed to get payment configuration" });
@@ -708,7 +711,8 @@ export async function registerRoutes(
   app.post("/api/stripe/checkout", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = req.user.claims.sub;
-      const { planId, orgId } = req.body;
+      const { planId, orgId, testMode: reqTestMode } = req.body;
+      const testMode = reqTestMode === true;
 
       if (!planId) {
         return res.status(400).json({ error: "Plan ID is required" });
@@ -735,14 +739,25 @@ export async function registerRoutes(
         return res.status(403).json({ error: "You don't have access to this organization" });
       }
 
+      // If org already has Stripe data from a different mode, clean it first
+      if (org.stripeCustomerId && org.stripeTestMode !== testMode) {
+        await storage.updateOrganizationStripeInfo(org.id, {
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+          stripeTestMode: testMode,
+        });
+      } else if (!org.stripeCustomerId) {
+        await storage.updateOrganizationStripeInfo(org.id, { stripeTestMode: testMode });
+      }
+
       const stripeState = await validateAndCleanStripeData(org.id);
       let customerId = stripeState.customerId;
       if (!customerId) {
         if (!org.contactEmail) {
           return res.status(400).json({ error: "This organization has no contact email on file. Please add a contact email in your organization settings before setting up billing." });
         }
-        const customer = await stripeService.createCustomer(org.contactEmail, org.id, org.name);
-        await storage.updateOrganizationStripeInfo(org.id, { stripeCustomerId: customer.id });
+        const customer = await stripeService.createCustomer(org.contactEmail, org.id, org.name, testMode);
+        await storage.updateOrganizationStripeInfo(org.id, { stripeCustomerId: customer.id, stripeTestMode: testMode });
         customerId = customer.id;
       }
 
@@ -750,8 +765,9 @@ export async function registerRoutes(
       const session = await stripeService.createCheckoutSession(
         customerId,
         plan.stripePriceId,
-        `${baseUrl}/dashboard?subscription=success&plan=${planId}&session_id={CHECKOUT_SESSION_ID}&orgId=${org.id}`,
+        `${baseUrl}/dashboard?subscription=success&plan=${planId}&session_id={CHECKOUT_SESSION_ID}&orgId=${org.id}&testMode=${testMode}`,
         `${baseUrl}/dashboard`,
+        testMode,
         undefined,
         { orgId: String(org.id), planId: String(planId) }
       );
@@ -766,7 +782,7 @@ export async function registerRoutes(
   app.post("/api/stripe/confirm-checkout", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = req.user.claims.sub;
-      const { sessionId, planId, orgId: bodyOrgId } = req.body;
+      const { sessionId, planId, orgId: bodyOrgId, testMode: reqTestMode } = req.body;
 
       if (!sessionId || !planId) {
         return res.status(400).json({ error: "Session ID and Plan ID are required" });
@@ -777,7 +793,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid plan" });
       }
 
-      const session = await stripeService.retrieveCheckoutSession(sessionId);
+      // Determine testMode from request or from the org
+      const metadataOrgIdRaw = bodyOrgId ? parseInt(bodyOrgId) : null;
+      const preOrg = metadataOrgIdRaw ? await storage.getOrganization(metadataOrgIdRaw) : null;
+      const testMode = reqTestMode === true || reqTestMode === 'true' || (preOrg?.stripeTestMode ?? false);
+
+      const session = await stripeService.retrieveCheckoutSession(sessionId, testMode);
       if (!session || (session.payment_status !== "paid" && session.status !== "complete")) {
         return res.status(400).json({ error: "Checkout session is not complete" });
       }
@@ -803,14 +824,15 @@ export async function registerRoutes(
       if (typeof session.subscription === 'object' && session.subscription) {
         subscription = session.subscription;
       } else if (subscriptionId) {
-        subscription = await stripeService.retrieveSubscription(subscriptionId);
+        subscription = await stripeService.retrieveSubscription(subscriptionId, testMode);
       }
 
       if (subscription && plan.stripePriceId) {
         const subItems = subscription.items?.data || [];
+        const effectivePriceId = getPriceId(plan.stripePriceId, testMode);
         const matchesPlan = subItems.some((item: any) => {
           const priceId = typeof item.price === 'string' ? item.price : item.price?.id;
-          return priceId === plan.stripePriceId;
+          return priceId === plan.stripePriceId || priceId === effectivePriceId;
         });
         if (!matchesPlan) {
           return res.status(400).json({ error: "Subscription does not match the selected plan" });
@@ -830,7 +852,7 @@ export async function registerRoutes(
       });
       await storage.syncOrgCredits(org.id);
 
-      const stripeInfo: any = { subscriptionStatus: "active" };
+      const stripeInfo: any = { subscriptionStatus: "active", stripeTestMode: testMode };
       if (sessionCustomerId && !org.stripeCustomerId) {
         stripeInfo.stripeCustomerId = sessionCustomerId;
       }
@@ -878,10 +900,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No billing account found. If you previously had a subscription, it may have been canceled. Please choose a new plan." });
       }
 
+      const refreshedOrg = await storage.getOrganization(org.id);
+      const testMode = refreshedOrg?.stripeTestMode ?? false;
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const session = await stripeService.createCustomerPortalSession(
         stripeState.customerId,
-        `${baseUrl}/dashboard`
+        `${baseUrl}/dashboard`,
+        testMode
       );
 
       res.json({ url: session.url });
@@ -919,7 +944,7 @@ export async function registerRoutes(
 
       if (org.stripeSubscriptionId) {
         try {
-          const periodEnd = await stripeService.getSubscriptionPeriodEnd(org.stripeSubscriptionId);
+          const periodEnd = await stripeService.getSubscriptionPeriodEnd(org.stripeSubscriptionId, org.stripeTestMode);
           if (periodEnd) {
             renewalDate = periodEnd.toISOString();
           }
@@ -991,7 +1016,7 @@ export async function registerRoutes(
         return res.json({ action: 'upgrade', planId: plan.id });
       }
 
-      const result = await stripeService.scheduleDowngrade(org.stripeSubscriptionId, plan.stripePriceId);
+      const result = await stripeService.scheduleDowngrade(org.stripeSubscriptionId, plan.stripePriceId, org.stripeTestMode);
 
       await storage.updateOrganization(org.id, {
         pendingPlanId: plan.id,
@@ -1035,7 +1060,7 @@ export async function registerRoutes(
       if (org.stripeSubscriptionId) {
         const currentPlan = org.planId ? await storage.getSubscriptionPlan(org.planId) : null;
         if (currentPlan?.stripePriceId) {
-          await stripeService.scheduleDowngrade(org.stripeSubscriptionId, currentPlan.stripePriceId);
+          await stripeService.scheduleDowngrade(org.stripeSubscriptionId, currentPlan.stripePriceId, org.stripeTestMode);
         }
       }
 
@@ -1131,7 +1156,7 @@ export async function registerRoutes(
         }
       }
 
-      await stripeService.updateAddonSlots(stripeState.subscriptionId, quantity);
+      await stripeService.updateAddonSlots(stripeState.subscriptionId, quantity, org.stripeTestMode);
       await storage.updateOrganization(org.id, { additionalPetSlots: quantity });
 
       const updated = await storage.getOrganization(org.id);
@@ -2062,7 +2087,7 @@ export async function registerRoutes(
         "locationStreet", "locationCity", "locationState", "locationZip", "locationCountry",
         "billingStreet", "billingCity", "billingState", "billingZip", "billingCountry",
         "notes", "isActive", "planId", "speciesHandled", "onboardingCompleted",
-        "subscriptionStatus", "stripeCustomerId", "stripeSubscriptionId", "billingCycleStart"
+        "subscriptionStatus", "stripeCustomerId", "stripeSubscriptionId", "stripeTestMode", "billingCycleStart"
       ];
       const updates: Record<string, any> = {};
       for (const field of allowedFields) {
@@ -2092,7 +2117,7 @@ export async function registerRoutes(
       }
 
       const stripeFields: Record<string, any> = {};
-      for (const key of ["stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus"] as const) {
+      for (const key of ["stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "stripeTestMode"] as const) {
         if (updates[key] !== undefined) {
           stripeFields[key] = updates[key];
           if (key !== "subscriptionStatus") delete updates[key];
@@ -2199,13 +2224,13 @@ export async function registerRoutes(
 
   app.post("/api/admin/sync-stripe", isAuthenticated, isAdmin, async (req: any, res: Response) => {
     try {
-      const stripe = await getUncachableStripeClient();
       const allOrgs = await storage.getAllOrganizations();
       const orgsWithStripe = allOrgs.filter(o => o.stripeSubscriptionId);
       const results: string[] = [];
 
       for (const org of orgsWithStripe) {
         try {
+          const stripe = getStripeClient(org.stripeTestMode);
           const sub = await stripe.subscriptions.retrieve(org.stripeSubscriptionId!);
           const newStatus = mapStripeStatusToInternal(sub.status, org.subscriptionStatus);
 
@@ -2280,6 +2305,55 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error recalculating credits:", error);
       res.status(500).json({ error: "Failed to recalculate credits" });
+    }
+  });
+
+  // --- SMS sharing via Twilio ---
+  const smsRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    message: { error: "Too many texts sent. Please wait a minute." },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: any) => req.user?.claims?.sub || "anonymous",
+  });
+
+  app.post("/api/send-sms", isAuthenticated, smsRateLimiter, async (req: any, res: Response) => {
+    try {
+      const { to, message } = req.body;
+      if (!to || !message) {
+        return res.status(400).json({ error: "Phone number and message are required" });
+      }
+
+      // Basic phone number validation: digits, spaces, dashes, parens, optional leading +
+      const cleaned = to.replace(/[\s\-().]/g, "");
+      if (!/^\+?1?\d{10,15}$/.test(cleaned)) {
+        return res.status(400).json({ error: "Please enter a valid phone number" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !fromNumber) {
+        return res.status(503).json({ error: "SMS service is not configured" });
+      }
+
+      const client = Twilio(apiKeySid, apiKeySecret, { accountSid });
+      const phone = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
+
+      await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: phone,
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("SMS send error:", error);
+      const twilioMsg = error?.message || "Failed to send text message";
+      res.status(500).json({ error: twilioMsg });
     }
   });
 

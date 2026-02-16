@@ -19,7 +19,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dog, Cat, Sparkles, Check, Zap, ArrowRight, Plus, ArrowLeft, Clock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Dog, Cat, Sparkles, Check, Zap, ArrowRight, Plus, ArrowLeft, Clock, FlaskConical } from "lucide-react";
 import type { SubscriptionPlan } from "@shared/schema";
 
 interface SubscriptionInfo {
@@ -40,6 +42,7 @@ export default function ChoosePlan() {
   const isAdminFlow = orgId !== null && isAdmin;
 
   const [showSkipDialog, setShowSkipDialog] = useState(false);
+  const [testMode, setTestMode] = useState(false);
 
   const { data: plans, isLoading } = useQuery<SubscriptionPlan[]>({
     queryKey: ["/api/plans"],
@@ -105,7 +108,7 @@ export default function ChoosePlan() {
 
   const checkoutMutation = useMutation({
     mutationFn: async (planId: number) => {
-      const body: any = { planId };
+      const body: any = { planId, testMode };
       if (effectiveOrgId) {
         body.orgId = effectiveOrgId;
       }
@@ -225,6 +228,18 @@ export default function ChoosePlan() {
                 </Link>
               </Button>
             )}
+            <div className="flex items-center gap-1.5">
+              <Switch
+                id="test-mode"
+                checked={testMode}
+                onCheckedChange={setTestMode}
+                data-testid="switch-test-mode"
+              />
+              <Label htmlFor="test-mode" className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer">
+                <FlaskConical className="h-3 w-3" />
+                Test
+              </Label>
+            </div>
             <ThemeToggle />
           </div>
         </div>

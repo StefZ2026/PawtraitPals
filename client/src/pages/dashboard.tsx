@@ -67,9 +67,11 @@ export default function Dashboard() {
       };
 
       const orgIdParam = urlParams.get('orgId');
+      const testModeParam = urlParams.get('testMode');
       if (sessionId && planParam) {
         const confirmBody: any = { sessionId, planId: parseInt(planParam) };
         if (orgIdParam) confirmBody.orgId = parseInt(orgIdParam);
+        if (testModeParam === 'true') confirmBody.testMode = true;
         apiRequest("POST", "/api/stripe/confirm-checkout", confirmBody)
           .then(onSubscriptionConfirmed)
           .catch(onSubscriptionConfirmed);

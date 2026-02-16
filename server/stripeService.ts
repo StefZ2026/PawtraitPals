@@ -1,10 +1,11 @@
-import { getUncachableStripeClient } from './stripeClient';
+import { getStripeClient, getPriceId } from './stripeClient';
 
-let cachedAddonPriceId: string | null = null;
+let cachedTestAddonPriceId: string | null = null;
+let cachedLiveAddonPriceId: string | null = null;
 
 export class StripeService {
-  async createCustomer(email: string, orgId: number, organizationName: string) {
-    const stripe = await getUncachableStripeClient();
+  async createCustomer(email: string, orgId: number, organizationName: string, testMode: boolean = false) {
+    const stripe = getStripeClient(testMode);
     return await stripe.customers.create({
       email,
       name: organizationName,
@@ -12,25 +13,27 @@ export class StripeService {
     });
   }
 
-  async retrieveCustomer(customerId: string) {
-    const stripe = await getUncachableStripeClient();
+  async retrieveCustomer(customerId: string, testMode: boolean = false) {
+    const stripe = getStripeClient(testMode);
     return await stripe.customers.retrieve(customerId);
   }
 
   async createCheckoutSession(
-    customerId: string, 
-    priceId: string, 
-    successUrl: string, 
+    customerId: string,
+    priceId: string,
+    successUrl: string,
     cancelUrl: string,
+    testMode: boolean = false,
     trialDays?: number,
     metadata?: Record<string, string>
   ) {
-    const stripe = await getUncachableStripeClient();
-    
+    const stripe = getStripeClient(testMode);
+    const effectivePriceId = getPriceId(priceId, testMode);
+
     const sessionParams: any = {
       customer: customerId,
       payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: effectivePriceId, quantity: 1 }],
       mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -49,35 +52,38 @@ export class StripeService {
     return await stripe.checkout.sessions.create(sessionParams);
   }
 
-  async createCustomerPortalSession(customerId: string, returnUrl: string) {
-    const stripe = await getUncachableStripeClient();
+  async createCustomerPortalSession(customerId: string, returnUrl: string, testMode: boolean = false) {
+    const stripe = getStripeClient(testMode);
     return await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: returnUrl,
     });
   }
 
-  async retrieveCheckoutSession(sessionId: string) {
-    const stripe = await getUncachableStripeClient();
+  async retrieveCheckoutSession(sessionId: string, testMode: boolean = false) {
+    const stripe = getStripeClient(testMode);
     return await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ['subscription'],
     });
   }
 
-  async retrieveSubscription(subscriptionId: string) {
-    const stripe = await getUncachableStripeClient();
+  async retrieveSubscription(subscriptionId: string, testMode: boolean = false) {
+    const stripe = getStripeClient(testMode);
     return await stripe.subscriptions.retrieve(subscriptionId);
   }
 
-  async getOrCreateAddonPriceId(): Promise<string> {
-    if (cachedAddonPriceId) return cachedAddonPriceId;
+  async getOrCreateAddonPriceId(testMode: boolean = false): Promise<string> {
+    const cached = testMode ? cachedTestAddonPriceId : cachedLiveAddonPriceId;
+    if (cached) return cached;
 
     if (process.env.STRIPE_ADDON_PRICE_ID) {
-      cachedAddonPriceId = process.env.STRIPE_ADDON_PRICE_ID;
-      return cachedAddonPriceId;
+      const val = process.env.STRIPE_ADDON_PRICE_ID;
+      if (testMode) cachedTestAddonPriceId = val;
+      else cachedLiveAddonPriceId = val;
+      return val;
     }
 
-    const stripe = await getUncachableStripeClient();
+    const stripe = getStripeClient(testMode);
 
     const products = await stripe.products.search({
       query: "metadata['type']:'pet_slot_addon'",
@@ -114,13 +120,14 @@ export class StripeService {
       });
     }
 
-    cachedAddonPriceId = price.id;
-    return cachedAddonPriceId;
+    if (testMode) cachedTestAddonPriceId = price.id;
+    else cachedLiveAddonPriceId = price.id;
+    return price.id;
   }
 
-  async updateAddonSlots(subscriptionId: string, quantity: number): Promise<void> {
-    const stripe = await getUncachableStripeClient();
-    const addonPriceId = await this.getOrCreateAddonPriceId();
+  async updateAddonSlots(subscriptionId: string, quantity: number, testMode: boolean = false): Promise<void> {
+    const stripe = getStripeClient(testMode);
+    const addonPriceId = await this.getOrCreateAddonPriceId(testMode);
 
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const existingItem = subscription.items.data.find((item: any) => {
@@ -147,9 +154,9 @@ export class StripeService {
     }
   }
 
-  async removeAddonFromSubscription(subscriptionId: string): Promise<void> {
-    const stripe = await getUncachableStripeClient();
-    const addonPriceId = await this.getOrCreateAddonPriceId();
+  async removeAddonFromSubscription(subscriptionId: string, testMode: boolean = false): Promise<void> {
+    const stripe = getStripeClient(testMode);
+    const addonPriceId = await this.getOrCreateAddonPriceId(testMode);
 
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const existingItem = subscription.items.data.find((item: any) => {
@@ -164,24 +171,27 @@ export class StripeService {
     }
   }
 
-  async getAddonPriceId(): Promise<string> {
-    return this.getOrCreateAddonPriceId();
+  async getAddonPriceId(testMode: boolean = false): Promise<string> {
+    return this.getOrCreateAddonPriceId(testMode);
   }
 
-  async scheduleDowngrade(subscriptionId: string, newPriceId: string): Promise<{ currentPeriodEnd: Date }> {
-    const stripe = await getUncachableStripeClient();
+  async scheduleDowngrade(subscriptionId: string, newPriceId: string, testMode: boolean = false): Promise<{ currentPeriodEnd: Date }> {
+    const stripe = getStripeClient(testMode);
+    const addonPriceId = await this.getOrCreateAddonPriceId(testMode);
     const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;
 
     const mainItem = subscription.items.data.find((item: any) => {
       const priceId = typeof item.price === 'string' ? item.price : item.price?.id;
-      return priceId !== cachedAddonPriceId;
+      return priceId !== addonPriceId;
     }) || subscription.items.data[0];
+
+    const effectivePriceId = getPriceId(newPriceId, testMode);
 
     await stripe.subscriptions.update(subscriptionId, {
       proration_behavior: 'none',
       items: [{
         id: mainItem.id,
-        price: newPriceId,
+        price: effectivePriceId,
       }],
       cancel_at_period_end: false,
     } as any);
@@ -191,8 +201,8 @@ export class StripeService {
     return { currentPeriodEnd: periodEnd };
   }
 
-  async getSubscriptionPeriodEnd(subscriptionId: string): Promise<Date | null> {
-    const stripe = await getUncachableStripeClient();
+  async getSubscriptionPeriodEnd(subscriptionId: string, testMode: boolean = false): Promise<Date | null> {
+    const stripe = getStripeClient(testMode);
     try {
       const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;
       return new Date(subscription.current_period_end * 1000);
