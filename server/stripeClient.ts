@@ -16,9 +16,9 @@ export async function getStripePublishableKey(): Promise<string> {
 }
 
 export const STRIPE_PLAN_PRICE_MAP: Record<string, { id: number; name: string }> = {
-  'price_1Sz4cNBL11m7KnKuj1rTreVC': { id: 6, name: 'Starter' },
-  'price_1Sz4cOBL11m7KnKuNTnrgKDk': { id: 7, name: 'Professional' },
-  'price_1Sz4tFBL11m7KnKu3E12DPOG': { id: 8, name: 'Executive' },
+  'price_1SxgIU2LfX3IuyBI3iXCfRn5': { id: 6, name: 'Starter' },
+  'price_1SxgIU2LfX3IuyBIbG1jtLcC': { id: 7, name: 'Professional' },
+  'price_1SxgIU2LfX3IuyBIUy4rwplJ': { id: 8, name: 'Executive' },
 };
 
 export function mapStripeStatusToInternal(
