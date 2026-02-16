@@ -38,7 +38,7 @@ interface OrgWithStats extends Organization {
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
-  const { user, isLoading: authLoading, isAuthenticated, isAdmin } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated, isAdmin, logout, isLoggingOut } = useAuth();
   const { toast } = useToast();
   const [selectedOrgId, setSelectedOrgId] = useState<number | null>(() => {
     const orgParam = new URLSearchParams(window.location.search).get('org');
@@ -226,11 +226,9 @@ export default function Dashboard() {
                 <span className="text-sm font-medium hidden sm:inline">
                   {user?.firstName || user?.email?.split("@")[0]}
                 </span>
-                <a href="/login">
-                  <Button variant="ghost" size="icon" data-testid="button-logout">
+                <Button variant="ghost" size="icon" data-testid="button-logout" onClick={() => logout()} disabled={isLoggingOut}>
                     <LogOut className="h-4 w-4" />
-                  </Button>
-                </a>
+                </Button>
                 <ThemeToggle />
               </div>
             ) : (

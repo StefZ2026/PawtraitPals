@@ -38,7 +38,7 @@ export default function RescueInfo() {
   const isAdminView = adminOrgId !== null && adminOrgId > 0;
 
   const [, navigate] = useLocation();
-  const { user, isLoading: authLoading, isAuthenticated, isAdmin } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated, isAdmin, logout, isLoggingOut } = useAuth();
   const { toast } = useToast();
   const [editingSection, setEditingSection] = useState<SectionName | null>(null);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
@@ -318,11 +318,9 @@ export default function RescueInfo() {
                 <span className="text-sm font-medium hidden sm:inline">
                   {user?.firstName || user?.email?.split("@")[0]}
                 </span>
-                <a href="/login">
-                  <Button variant="ghost" size="icon" data-testid="button-logout-rescue-info">
+                <Button variant="ghost" size="icon" data-testid="button-logout-rescue-info" onClick={() => logout()} disabled={isLoggingOut}>
                     <LogOut className="h-4 w-4" />
-                  </Button>
-                </a>
+                </Button>
               </div>
             )}
             <ThemeToggle />

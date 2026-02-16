@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Home() {
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
 
   return (
     <div className="min-h-screen">
@@ -35,11 +35,9 @@ export default function Home() {
                     <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
                     <AvatarFallback>{user?.firstName?.[0] || user?.email?.[0] || "U"}</AvatarFallback>
                   </Avatar>
-                  <a href="/login">
-                    <Button variant="ghost" size="icon" data-testid="button-logout">
+                    <Button variant="ghost" size="icon" data-testid="button-logout" onClick={() => logout()} disabled={isLoggingOut}>
                       <LogOut className="h-4 w-4" />
                     </Button>
-                  </a>
                 </div>
               </>
             ) : (

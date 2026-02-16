@@ -67,7 +67,7 @@ function AdminHeader({ adminBadge = true }: { adminBadge?: boolean }) {
 
 export default function Admin() {
   const [, navigate] = useLocation();
-  const { isLoading: authLoading, isAuthenticated, isAdmin } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, isAdmin, logout, isLoggingOut } = useAuth();
   const { toast } = useToast();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [currentView, setCurrentView] = useState<AdminView>("dashboard");
@@ -352,11 +352,9 @@ export default function Admin() {
               <Shield className="h-3 w-3" />
               Admin
             </Badge>
-            <a href="/login">
-              <Button variant="ghost" size="icon" data-testid="button-logout-admin">
+            <Button variant="ghost" size="icon" data-testid="button-logout-admin" onClick={() => logout()} disabled={isLoggingOut}>
                 <LogOut className="h-4 w-4" />
-              </Button>
-            </a>
+            </Button>
             <ThemeToggle />
           </div>
         </div>
