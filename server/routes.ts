@@ -676,11 +676,13 @@ export async function registerRoutes(
 
   // Diagnostic health check (temporary)
   app.get("/api/health-check", async (req: Request, res: Response) => {
+    const dbUrl = process.env.DATABASE_URL || '';
+    const parsed = (() => { try { const u = new URL(dbUrl); return { user: u.username, host: u.hostname, port: u.port, db: u.pathname }; } catch { return { raw: dbUrl.substring(0, 30) }; } })();
     try {
       const plans = await storage.getAllSubscriptionPlans();
-      res.json({ status: "ok", planCount: plans.length });
+      res.json({ status: "ok", planCount: plans.length, connection: parsed });
     } catch (error: any) {
-      res.status(500).json({ status: "error", message: error.message, stack: error.stack?.split("\n").slice(0, 5) });
+      res.status(500).json({ status: "error", message: error.message, connection: parsed, code: error.code });
     }
   });
 

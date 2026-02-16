@@ -6,8 +6,28 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is not set");
 }
 
+// Parse DATABASE_URL manually to avoid URL-parsing issues with special chars in password
+function parseDbUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return {
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      host: parsed.hostname,
+      port: parseInt(parsed.port) || 5432,
+      database: parsed.pathname.slice(1) || 'postgres',
+    };
+  } catch {
+    // Fallback: use connection string directly
+    return { connectionString: url };
+  }
+}
+
+const dbConfig = parseDbUrl(process.env.DATABASE_URL);
+console.log(`[db] Connecting to ${(dbConfig as any).host || 'via connection string'}:${(dbConfig as any).port || '?'} as ${(dbConfig as any).user || '?'}`);
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  ...dbConfig,
   ssl: { rejectUnauthorized: false },
 });
 
