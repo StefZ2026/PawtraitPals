@@ -674,6 +674,16 @@ export async function registerRoutes(
     }
   });
 
+  // Diagnostic health check (temporary)
+  app.get("/api/health-check", async (req: Request, res: Response) => {
+    try {
+      const plans = await storage.getAllSubscriptionPlans();
+      res.json({ status: "ok", planCount: plans.length });
+    } catch (error: any) {
+      res.status(500).json({ status: "error", message: error.message, stack: error.stack?.split("\n").slice(0, 5) });
+    }
+  });
+
   // Subscription plans
   app.get("/api/plans", async (req: Request, res: Response) => {
     try {
