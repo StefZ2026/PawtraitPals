@@ -21,13 +21,16 @@ import {
   Phone, Mail, Globe, CreditCard, ImageIcon, Upload,
   Crown, Heart, Plus
 } from "lucide-react";
+import { SiFacebook, SiInstagram } from "react-icons/si";
+import { FaXTwitter } from "react-icons/fa6";
+import { NextdoorIcon } from "@/components/nextdoor-icon";
 import type { Organization, SubscriptionPlan, Dog as DogType } from "@shared/schema";
 
 interface OrgDetail extends Organization {
   dogCount?: number;
 }
 
-type SectionName = "business" | "contact" | "billing" | "notes" | "plan" | "logo";
+type SectionName = "business" | "contact" | "social" | "billing" | "notes" | "plan" | "logo";
 
 export default function RescueInfo() {
   const params = useParams<{ id: string }>();
@@ -165,6 +168,13 @@ export default function RescueInfo() {
       setEditValues({
         contactName: org.contactName || "",
         contactPhone: org.contactPhone || "",
+      });
+    } else if (section === "social") {
+      setEditValues({
+        socialFacebook: org.socialFacebook || "",
+        socialInstagram: org.socialInstagram || "",
+        socialTwitter: org.socialTwitter || "",
+        socialNextdoor: org.socialNextdoor || "",
       });
     } else if (section === "billing") {
       setEditValues({
@@ -698,6 +708,109 @@ export default function RescueInfo() {
                     <p className="flex items-center gap-1.5" data-testid="text-contact-phone">
                       <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                       {org.contactPhone || <span className="text-muted-foreground">&mdash;</span>}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Social Media */}
+          <Card data-testid="section-social">
+            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-primary" />
+                <div>
+                  <CardTitle className="text-base">Social Media</CardTitle>
+                  <CardDescription>Social media profile links</CardDescription>
+                </div>
+              </div>
+              {editButton("social", "social")}
+            </CardHeader>
+            <CardContent>
+              {editingSection === "social" ? (
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Facebook</label>
+                    <Input
+                      value={editValues.socialFacebook || ""}
+                      onChange={(e) => setEditValues({ ...editValues, socialFacebook: e.target.value })}
+                      placeholder="https://facebook.com/yourrescue"
+                      data-testid="input-social-facebook"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Instagram</label>
+                    <Input
+                      value={editValues.socialInstagram || ""}
+                      onChange={(e) => setEditValues({ ...editValues, socialInstagram: e.target.value })}
+                      placeholder="https://instagram.com/yourrescue"
+                      data-testid="input-social-instagram"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">X (Twitter)</label>
+                    <Input
+                      value={editValues.socialTwitter || ""}
+                      onChange={(e) => setEditValues({ ...editValues, socialTwitter: e.target.value })}
+                      placeholder="https://x.com/yourrescue"
+                      data-testid="input-social-twitter"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">Nextdoor</label>
+                    <Input
+                      value={editValues.socialNextdoor || ""}
+                      onChange={(e) => setEditValues({ ...editValues, socialNextdoor: e.target.value })}
+                      placeholder="https://nextdoor.com/pages/yourrescue"
+                      data-testid="input-social-nextdoor"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-0.5">Facebook</p>
+                    <p className="flex items-center gap-1.5" data-testid="text-social-facebook">
+                      <SiFacebook className="h-3.5 w-3.5 text-muted-foreground" />
+                      {org.socialFacebook ? (
+                        <a href={org.socialFacebook} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                          {org.socialFacebook.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                        </a>
+                      ) : <span className="text-muted-foreground">&mdash;</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-0.5">Instagram</p>
+                    <p className="flex items-center gap-1.5" data-testid="text-social-instagram">
+                      <SiInstagram className="h-3.5 w-3.5 text-muted-foreground" />
+                      {org.socialInstagram ? (
+                        <a href={org.socialInstagram} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                          {org.socialInstagram.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                        </a>
+                      ) : <span className="text-muted-foreground">&mdash;</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-0.5">X (Twitter)</p>
+                    <p className="flex items-center gap-1.5" data-testid="text-social-twitter">
+                      <FaXTwitter className="h-3.5 w-3.5 text-muted-foreground" />
+                      {org.socialTwitter ? (
+                        <a href={org.socialTwitter} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                          {org.socialTwitter.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                        </a>
+                      ) : <span className="text-muted-foreground">&mdash;</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-0.5">Nextdoor</p>
+                    <p className="flex items-center gap-1.5" data-testid="text-social-nextdoor">
+                      <NextdoorIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      {org.socialNextdoor ? (
+                        <a href={org.socialNextdoor} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                          {org.socialNextdoor.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                        </a>
+                      ) : <span className="text-muted-foreground">&mdash;</span>}
                     </p>
                   </div>
                 </div>

@@ -480,6 +480,7 @@ export async function registerRoutes(
       const allowedFields = [
         "name", "description", "websiteUrl", "logoUrl",
         "contactName", "contactEmail", "contactPhone",
+        "socialFacebook", "socialInstagram", "socialTwitter", "socialNextdoor",
         "billingStreet", "billingCity", "billingState", "billingZip", "billingCountry",
         "locationStreet", "locationCity", "locationState", "locationZip", "locationCountry",
         "speciesHandled", "onboardingCompleted"
@@ -498,6 +499,7 @@ export async function registerRoutes(
       const MAX_LENGTHS: Record<string, number> = {
         name: 200, description: 2000, websiteUrl: 500,
         contactName: 200, contactEmail: 200, contactPhone: 50,
+        socialFacebook: 500, socialInstagram: 500, socialTwitter: 500, socialNextdoor: 500,
         billingStreet: 500, billingCity: 200, billingState: 100, billingZip: 20, billingCountry: 100,
         locationStreet: 500, locationCity: 200, locationState: 100, locationZip: 20, locationCountry: 100
       };
@@ -658,6 +660,10 @@ export async function registerRoutes(
         logoUrl: org.logoUrl,
         contactEmail: org.contactEmail,
         contactPhone: org.contactPhone,
+        socialFacebook: org.socialFacebook,
+        socialInstagram: org.socialInstagram,
+        socialTwitter: org.socialTwitter,
+        socialNextdoor: org.socialNextdoor,
         dogs: dogsWithPortraits,
       });
     } catch (error) {
@@ -2052,6 +2058,7 @@ export async function registerRoutes(
       const allowedFields = [
         "name", "description", "websiteUrl", "logoUrl",
         "contactName", "contactEmail", "contactPhone",
+        "socialFacebook", "socialInstagram", "socialTwitter", "socialNextdoor",
         "locationStreet", "locationCity", "locationState", "locationZip", "locationCountry",
         "billingStreet", "billingCity", "billingState", "billingZip", "billingCountry",
         "notes", "isActive", "planId", "speciesHandled", "onboardingCompleted",

@@ -54,8 +54,9 @@ export default function DogProfile() {
 
   const isCat = dog?.species === "cat";
   const speciesWord = isCat ? "cat" : "dog";
-  const shareTitle = `${dog?.name}'s Pawfile - Available for Adoption`;
-  const shareText = `Meet ${dog?.name}, a beautiful ${dog?.breed || (isCat ? "cat" : "dog")} looking for a forever home!`;
+  const rescueName = dog?.organizationName;
+  const shareTitle = `${dog?.name}'s Pawfile${rescueName ? ` from ${rescueName}` : ''} - Available for Adoption`;
+  const shareText = `Meet ${dog?.name}, a beautiful ${dog?.breed || (isCat ? "cat" : "dog")} looking for a forever home${rescueName ? ` through ${rescueName}` : ''}! View their pawfile on Pawtrait Pals.`;
 
   const handlePrint = () => {
     window.print();
@@ -196,25 +197,24 @@ export default function DogProfile() {
 
             {dog.isAvailable && (
               <div className="px-6 pb-4 text-center">
-                <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-medium">
-                  <Heart className="h-3.5 w-3.5" />
-                  Available for Adoption
-                </div>
-              </div>
-            )}
-
-            {dog.adoptionUrl && (
-              <div className="px-6 pb-4 text-center print:hidden">
-                <a
-                  href={dog.adoptionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-primary text-sm font-medium hover:underline"
-                  data-testid="link-adopt"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Learn more about adopting {dog.name}
-                </a>
+                {dog.adoptionUrl ? (
+                  <a
+                    href={dog.adoptionUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-medium hover:bg-primary/20 transition-colors cursor-pointer"
+                    data-testid="link-adopt"
+                  >
+                    <Heart className="h-3.5 w-3.5" />
+                    Available for Adoption
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-medium">
+                    <Heart className="h-3.5 w-3.5" />
+                    Available for Adoption
+                  </div>
+                )}
               </div>
             )}
 
@@ -238,10 +238,13 @@ export default function DogProfile() {
           )}
 
           <div className="flex flex-wrap gap-2 mt-2 print:hidden">
+            {/* Download button hidden for Pawtrait Pals — re-enable for Pawtrait Pros */}
+            {false && (
             <Button onClick={handleDownload} className="gap-2" data-testid="button-download">
               <Download className="h-4 w-4" />
               Download Pawfile
             </Button>
+            )}
             <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
               <Printer className="h-4 w-4" />
               Print

@@ -15,11 +15,14 @@ import {
   Mail, ArrowRight, ArrowLeft, PawPrint,
   Check, Sparkles, PartyPopper, Zap, Plus
 } from "lucide-react";
+import { SiFacebook, SiInstagram } from "react-icons/si";
+import { FaXTwitter } from "react-icons/fa6";
+import { NextdoorIcon } from "@/components/nextdoor-icon";
 import type { Organization, SubscriptionPlan } from "@shared/schema";
 
-type Step = "welcome" | "logo" | "species" | "contact" | "location" | "billing" | "plan" | "finish";
+type Step = "welcome" | "logo" | "species" | "contact" | "social" | "location" | "billing" | "plan" | "finish";
 
-const STEPS: Step[] = ["welcome", "logo", "species", "contact", "location", "billing", "plan", "finish"];
+const STEPS: Step[] = ["welcome", "logo", "species", "contact", "social", "location", "billing", "plan", "finish"];
 
 type AddressPrefix = "location" | "billing";
 type AddressField = "Street" | "City" | "State" | "Zip" | "Country";
@@ -28,6 +31,10 @@ type FormData = {
   speciesHandled: string;
   websiteUrl: string;
   contactEmail: string;
+  socialFacebook: string;
+  socialInstagram: string;
+  socialTwitter: string;
+  socialNextdoor: string;
   locationStreet: string;
   locationCity: string;
   locationState: string;
@@ -211,6 +218,10 @@ export default function Onboarding() {
     speciesHandled: "",
     websiteUrl: "",
     contactEmail: "",
+    socialFacebook: "",
+    socialInstagram: "",
+    socialTwitter: "",
+    socialNextdoor: "",
     locationStreet: "",
     locationCity: "",
     locationState: "",
@@ -284,6 +295,10 @@ export default function Onboarding() {
       speciesHandled: org.speciesHandled || "",
       websiteUrl: org.websiteUrl || "",
       contactEmail: org.contactEmail || "",
+      socialFacebook: org.socialFacebook || "",
+      socialInstagram: org.socialInstagram || "",
+      socialTwitter: org.socialTwitter || "",
+      socialNextdoor: org.socialNextdoor || "",
       locationStreet: org.locationStreet || "",
       locationCity: org.locationCity || "",
       locationState: org.locationState || "",
@@ -302,6 +317,7 @@ export default function Onboarding() {
 
     const hasSpecies = Boolean(org.speciesHandled);
     const hasContact = Boolean(org.websiteUrl || org.contactEmail);
+    const hasSocial = Boolean(org.socialFacebook || org.socialInstagram || org.socialTwitter || org.socialNextdoor);
     const hasLocation = Boolean(org.locationStreet);
     const hasBilling = Boolean(org.billingStreet);
     const hasPlan = Boolean(org.planId);
@@ -316,8 +332,10 @@ export default function Onboarding() {
       startStep = "plan";
     } else if (hasSpecies && hasContact && hasLocation) {
       startStep = "billing";
-    } else if (hasSpecies && hasContact) {
+    } else if (hasSpecies && hasContact && (hasSocial || hasLocation)) {
       startStep = "location";
+    } else if (hasSpecies && hasContact) {
+      startStep = "social";
     } else if (hasSpecies) {
       startStep = "contact";
     }
@@ -702,6 +720,90 @@ export default function Onboarding() {
                 nextDisabled={updateMutation.isPending}
                 backTestId="button-back-contact"
                 nextTestId="button-next-contact"
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {currentStep === "social" && (
+          <Card data-testid="step-social">
+            <CardContent className="pt-8 pb-8 space-y-6">
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-serif font-bold" data-testid="text-social-title">
+                  Social Media Profiles
+                </h2>
+                <p className="text-muted-foreground">
+                  Help adopters follow your rescue on social media. All fields are optional.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                    <SiFacebook className="h-4 w-4 text-muted-foreground" /> Facebook
+                  </label>
+                  <Input
+                    placeholder="https://facebook.com/yourrescue"
+                    value={formData.socialFacebook}
+                    onChange={(e) => updateField("socialFacebook", e.target.value)}
+                    data-testid="input-onboarding-facebook"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                    <SiInstagram className="h-4 w-4 text-muted-foreground" /> Instagram
+                  </label>
+                  <Input
+                    placeholder="https://instagram.com/yourrescue"
+                    value={formData.socialInstagram}
+                    onChange={(e) => updateField("socialInstagram", e.target.value)}
+                    data-testid="input-onboarding-instagram"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                    <FaXTwitter className="h-4 w-4 text-muted-foreground" /> X (Twitter)
+                  </label>
+                  <Input
+                    placeholder="https://x.com/yourrescue"
+                    value={formData.socialTwitter}
+                    onChange={(e) => updateField("socialTwitter", e.target.value)}
+                    data-testid="input-onboarding-twitter"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                    <NextdoorIcon className="h-4 w-4 text-muted-foreground" /> Nextdoor
+                  </label>
+                  <Input
+                    placeholder="https://nextdoor.com/pages/yourrescue"
+                    value={formData.socialNextdoor}
+                    onChange={(e) => updateField("socialNextdoor", e.target.value)}
+                    data-testid="input-onboarding-nextdoor"
+                  />
+                </div>
+              </div>
+
+              <StepNavigation
+                onBack={goBack}
+                onNext={() => {
+                  const socialData: Record<string, string | null> = {
+                    socialFacebook: formData.socialFacebook || null,
+                    socialInstagram: formData.socialInstagram || null,
+                    socialTwitter: formData.socialTwitter || null,
+                    socialNextdoor: formData.socialNextdoor || null,
+                  };
+                  const hasAny = Object.values(socialData).some(v => v !== null);
+                  hasAny ? saveAndNext(socialData) : goNext();
+                }}
+                nextLabel={
+                  (formData.socialFacebook || formData.socialInstagram || formData.socialTwitter || formData.socialNextdoor)
+                    ? "Save & Continue"
+                    : "Skip for Now"
+                }
+                nextDisabled={updateMutation.isPending}
+                backTestId="button-back-social"
+                nextTestId="button-next-social"
               />
             </CardContent>
           </Card>

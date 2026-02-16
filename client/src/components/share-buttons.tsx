@@ -5,14 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link2, Check, MessageCircle } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { FaXTwitter } from "react-icons/fa6";
-
-function NextdoorIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M12 2L3 10v12h6v-7a3 3 0 0 1 6 0v7h6V10L12 2z" />
-    </svg>
-  );
-}
+import { NextdoorIcon } from "@/components/nextdoor-icon";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);

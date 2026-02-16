@@ -16,6 +16,9 @@ import { useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ShareButtons } from "@/components/share-buttons";
 import { AdminFloatingButton } from "@/components/admin-button";
+import { SiFacebook, SiInstagram } from "react-icons/si";
+import { FaXTwitter } from "react-icons/fa6";
+import { NextdoorIcon } from "@/components/nextdoor-icon";
 import { useAuth } from "@/hooks/use-auth";
 import type { Dog as DogType, Portrait } from "@shared/schema";
 
@@ -32,6 +35,10 @@ interface RescueShowcaseData {
   logoUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  socialFacebook: string | null;
+  socialInstagram: string | null;
+  socialTwitter: string | null;
+  socialNextdoor: string | null;
   dogs: DogWithPortrait[];
 }
 
@@ -190,6 +197,34 @@ export default function RescueShowcase() {
                   <ExternalLink className="h-3 w-3" />
                   {rescue.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                 </a>
+              )}
+              {(rescue.socialFacebook || rescue.socialInstagram || rescue.socialTwitter || rescue.socialNextdoor) && (
+                <div className="flex items-center justify-center gap-3 mt-3 print:hidden" data-testid="section-social-links">
+                  {rescue.socialFacebook && (
+                    <a href={rescue.socialFacebook} target="_blank" rel="noopener noreferrer"
+                       className="text-muted-foreground hover:text-primary transition-colors" title="Facebook">
+                      <SiFacebook className="h-5 w-5" />
+                    </a>
+                  )}
+                  {rescue.socialInstagram && (
+                    <a href={rescue.socialInstagram} target="_blank" rel="noopener noreferrer"
+                       className="text-muted-foreground hover:text-primary transition-colors" title="Instagram">
+                      <SiInstagram className="h-5 w-5" />
+                    </a>
+                  )}
+                  {rescue.socialTwitter && (
+                    <a href={rescue.socialTwitter} target="_blank" rel="noopener noreferrer"
+                       className="text-muted-foreground hover:text-primary transition-colors" title="X (Twitter)">
+                      <FaXTwitter className="h-5 w-5" />
+                    </a>
+                  )}
+                  {rescue.socialNextdoor && (
+                    <a href={rescue.socialNextdoor} target="_blank" rel="noopener noreferrer"
+                       className="text-muted-foreground hover:text-primary transition-colors" title="Nextdoor">
+                      <NextdoorIcon className="h-5 w-5" />
+                    </a>
+                  )}
+                </div>
               )}
             </div>
 
