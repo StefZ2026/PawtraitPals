@@ -23,8 +23,8 @@ const planDefinitions = [
     monthlyPortraitCredits: 45,
     overagePriceCents: 400,
     trialDays: 0,
-    stripePriceId: "price_1Sz4cNBL11m7KnKuj1rTreVC",
-    stripeProductId: "prod_Tus6HKT4CmXCNe",
+    stripePriceId: "price_1T1NpB2LfX3IuyBIb44I2uwq",
+    stripeProductId: "prod_TzMYhqaSdDwYcO",
   },
   {
     id: 7,
@@ -35,8 +35,8 @@ const planDefinitions = [
     monthlyPortraitCredits: 135,
     overagePriceCents: 400,
     trialDays: 0,
-    stripePriceId: "price_1Sz4cOBL11m7KnKuNTnrgKDk",
-    stripeProductId: "prod_Tus624pCN1AJXU",
+    stripePriceId: "price_1T1NpC2LfX3IuyBIBj9Mdx3f",
+    stripeProductId: "prod_TzMY4ahWLz2y9C",
   },
   {
     id: 8,
@@ -47,8 +47,8 @@ const planDefinitions = [
     monthlyPortraitCredits: 600,
     overagePriceCents: 300,
     trialDays: 0,
-    stripePriceId: "price_1Sz4tFBL11m7KnKu3E12DPOG",
-    stripeProductId: "prod_Tus6M8rz5V3CrO",
+    stripePriceId: "price_1T1NpC2LfX3IuyBIPtezJkZ0",
+    stripeProductId: "prod_TzMYb3LIL5kiZ5",
   },
 ];
 
