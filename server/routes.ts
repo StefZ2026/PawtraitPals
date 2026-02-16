@@ -324,8 +324,8 @@ export async function registerRoutes(
 
       for (const org of allOrgs) {
         if (org.subscriptionStatus === 'active' && !org.stripeSubscriptionId) {
-          // Log but don't auto-revert — migrated orgs may not have stripeSubscriptionId yet
-          issues.push(`NOTE: "${org.name}" (ID ${org.id}) active without Stripe subscription ID`);
+          const result = await handleCancellation(org.id, org);
+          fixes.push(`FIXED: "${org.name}" (ID ${org.id}) active without subscription → ${result}`);
         }
 
         if (org.stripeCustomerId && !org.stripeSubscriptionId && org.subscriptionStatus !== 'active') {
