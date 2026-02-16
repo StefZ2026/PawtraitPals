@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { isUnauthorizedError } from "@/lib/auth-utils";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AdminFloatingButton } from "@/components/admin-button";
 import {
@@ -112,7 +112,8 @@ export default function Dashboard() {
   const { data: dogs = [], isLoading: dogsLoading } = useQuery<DogWithPortrait[]>({
     queryKey: dogsQueryKey,
     queryFn: async () => {
-      const res = await fetch(dogsQueryUrl, {});
+      const headers = await getAuthHeaders();
+      const res = await fetch(dogsQueryUrl, { headers });
       if (!res.ok) throw new Error("Failed to fetch dogs");
       return res.json();
     },

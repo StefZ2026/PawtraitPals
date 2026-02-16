@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AdminFloatingButton } from "@/components/admin-button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -52,7 +52,8 @@ export default function RescueInfo() {
   const { data: adminOrg, isLoading: adminOrgLoading } = useQuery<OrgDetail>({
     queryKey: ["/api/admin/organizations", adminOrgId],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/organizations/${adminOrgId}`, {});
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/organizations/${adminOrgId}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch organization");
       return res.json();
     },

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Dog, Cat, Heart, Upload, MapPin, Globe,
@@ -238,7 +238,8 @@ export default function Onboarding() {
   const { data: adminOrg, isLoading: adminOrgLoading } = useQuery<any>({
     queryKey: ["/api/admin/organizations", adminOrgId],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/organizations/${adminOrgId}`, {});
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/organizations/${adminOrgId}`, { headers });
       if (!res.ok) return null;
       return res.json();
     },

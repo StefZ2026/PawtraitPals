@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
 import { ImageUpload } from "@/components/image-upload";
 import { StyleSelector } from "@/components/style-selector";
 import { PortraitPreview } from "@/components/portrait-preview";
@@ -59,7 +59,8 @@ export default function Create() {
   const { data: adminTargetOrg } = useQuery<any>({
     queryKey: ["/api/admin/organizations", orgParam],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/organizations/${orgParam}`, {});
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/organizations/${orgParam}`, { headers });
       if (!res.ok) return null;
       return res.json();
     },

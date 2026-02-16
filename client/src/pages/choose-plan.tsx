@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   AlertDialog,
@@ -55,7 +55,8 @@ export default function ChoosePlan() {
   const { data: subInfo } = useQuery<SubscriptionInfo>({
     queryKey: ["/api/subscription-info", effectiveOrgId],
     queryFn: async () => {
-      const res = await fetch(`/api/subscription-info?orgId=${effectiveOrgId}`, {});
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/subscription-info?orgId=${effectiveOrgId}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch subscription info");
       return res.json();
     },
