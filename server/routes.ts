@@ -740,7 +740,9 @@ export async function registerRoutes(
       }
 
       // If org already has Stripe data from a different mode, clean it first
-      if (org.stripeCustomerId && org.stripeTestMode !== testMode) {
+      // org.stripeTestMode is not in Drizzle schema — treat undefined as test mode
+      const orgCurrentMode = (org as any).stripeTestMode ?? true;
+      if (org.stripeCustomerId && orgCurrentMode !== testMode) {
         await storage.updateOrganizationStripeInfo(org.id, {
           stripeCustomerId: null,
           stripeSubscriptionId: null,
@@ -796,7 +798,7 @@ export async function registerRoutes(
       // Determine testMode from request or from the org
       const metadataOrgIdRaw = bodyOrgId ? parseInt(bodyOrgId) : null;
       const preOrg = metadataOrgIdRaw ? await storage.getOrganization(metadataOrgIdRaw) : null;
-      const testMode = reqTestMode === true || reqTestMode === 'true' || (preOrg?.stripeTestMode ?? false);
+      const testMode = reqTestMode === true || reqTestMode === 'true' || ((preOrg as any)?.stripeTestMode ?? true);
 
       const session = await stripeService.retrieveCheckoutSession(sessionId, testMode);
       if (!session || (session.payment_status !== "paid" && session.status !== "complete")) {
@@ -901,7 +903,7 @@ export async function registerRoutes(
       }
 
       const refreshedOrg = await storage.getOrganization(org.id);
-      const testMode = refreshedOrg?.stripeTestMode ?? false;
+      const testMode = (refreshedOrg as any)?.stripeTestMode ?? true;
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const session = await stripeService.createCustomerPortalSession(
         stripeState.customerId,

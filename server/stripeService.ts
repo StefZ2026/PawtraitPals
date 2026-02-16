@@ -3,8 +3,13 @@ import { getStripeClient, getPriceId } from './stripeClient';
 let cachedTestAddonPriceId: string | null = null;
 let cachedLiveAddonPriceId: string | null = null;
 
+// Helper: normalize undefined → true (test mode) for cache/branching
+function isTestMode(testMode?: boolean): boolean {
+  return testMode !== false;
+}
+
 export class StripeService {
-  async createCustomer(email: string, orgId: number, organizationName: string, testMode: boolean = false) {
+  async createCustomer(email: string, orgId: number, organizationName: string, testMode?: boolean) {
     const stripe = getStripeClient(testMode);
     return await stripe.customers.create({
       email,
@@ -13,7 +18,7 @@ export class StripeService {
     });
   }
 
-  async retrieveCustomer(customerId: string, testMode: boolean = false) {
+  async retrieveCustomer(customerId: string, testMode?: boolean) {
     const stripe = getStripeClient(testMode);
     return await stripe.customers.retrieve(customerId);
   }
@@ -23,7 +28,7 @@ export class StripeService {
     priceId: string,
     successUrl: string,
     cancelUrl: string,
-    testMode: boolean = false,
+    testMode?: boolean,
     trialDays?: number,
     metadata?: Record<string, string>
   ) {
@@ -52,7 +57,7 @@ export class StripeService {
     return await stripe.checkout.sessions.create(sessionParams);
   }
 
-  async createCustomerPortalSession(customerId: string, returnUrl: string, testMode: boolean = false) {
+  async createCustomerPortalSession(customerId: string, returnUrl: string, testMode?: boolean) {
     const stripe = getStripeClient(testMode);
     return await stripe.billingPortal.sessions.create({
       customer: customerId,
@@ -60,25 +65,26 @@ export class StripeService {
     });
   }
 
-  async retrieveCheckoutSession(sessionId: string, testMode: boolean = false) {
+  async retrieveCheckoutSession(sessionId: string, testMode?: boolean) {
     const stripe = getStripeClient(testMode);
     return await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ['subscription'],
     });
   }
 
-  async retrieveSubscription(subscriptionId: string, testMode: boolean = false) {
+  async retrieveSubscription(subscriptionId: string, testMode?: boolean) {
     const stripe = getStripeClient(testMode);
     return await stripe.subscriptions.retrieve(subscriptionId);
   }
 
-  async getOrCreateAddonPriceId(testMode: boolean = false): Promise<string> {
-    const cached = testMode ? cachedTestAddonPriceId : cachedLiveAddonPriceId;
+  async getOrCreateAddonPriceId(testMode?: boolean): Promise<string> {
+    const test = isTestMode(testMode);
+    const cached = test ? cachedTestAddonPriceId : cachedLiveAddonPriceId;
     if (cached) return cached;
 
     if (process.env.STRIPE_ADDON_PRICE_ID) {
       const val = process.env.STRIPE_ADDON_PRICE_ID;
-      if (testMode) cachedTestAddonPriceId = val;
+      if (test) cachedTestAddonPriceId = val;
       else cachedLiveAddonPriceId = val;
       return val;
     }
@@ -120,12 +126,12 @@ export class StripeService {
       });
     }
 
-    if (testMode) cachedTestAddonPriceId = price.id;
+    if (test) cachedTestAddonPriceId = price.id;
     else cachedLiveAddonPriceId = price.id;
     return price.id;
   }
 
-  async updateAddonSlots(subscriptionId: string, quantity: number, testMode: boolean = false): Promise<void> {
+  async updateAddonSlots(subscriptionId: string, quantity: number, testMode?: boolean): Promise<void> {
     const stripe = getStripeClient(testMode);
     const addonPriceId = await this.getOrCreateAddonPriceId(testMode);
 
@@ -154,7 +160,7 @@ export class StripeService {
     }
   }
 
-  async removeAddonFromSubscription(subscriptionId: string, testMode: boolean = false): Promise<void> {
+  async removeAddonFromSubscription(subscriptionId: string, testMode?: boolean): Promise<void> {
     const stripe = getStripeClient(testMode);
     const addonPriceId = await this.getOrCreateAddonPriceId(testMode);
 
@@ -171,11 +177,11 @@ export class StripeService {
     }
   }
 
-  async getAddonPriceId(testMode: boolean = false): Promise<string> {
+  async getAddonPriceId(testMode?: boolean): Promise<string> {
     return this.getOrCreateAddonPriceId(testMode);
   }
 
-  async scheduleDowngrade(subscriptionId: string, newPriceId: string, testMode: boolean = false): Promise<{ currentPeriodEnd: Date }> {
+  async scheduleDowngrade(subscriptionId: string, newPriceId: string, testMode?: boolean): Promise<{ currentPeriodEnd: Date }> {
     const stripe = getStripeClient(testMode);
     const addonPriceId = await this.getOrCreateAddonPriceId(testMode);
     const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;
@@ -201,7 +207,7 @@ export class StripeService {
     return { currentPeriodEnd: periodEnd };
   }
 
-  async getSubscriptionPeriodEnd(subscriptionId: string, testMode: boolean = false): Promise<Date | null> {
+  async getSubscriptionPeriodEnd(subscriptionId: string, testMode?: boolean): Promise<Date | null> {
     const stripe = getStripeClient(testMode);
     try {
       const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;

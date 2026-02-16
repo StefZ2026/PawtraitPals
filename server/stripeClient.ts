@@ -13,8 +13,11 @@ const liveStripe = new Stripe(process.env.STRIPE_LIVE_SECRET_KEY!, {
   apiVersion: '2025-11-17.clover' as any,
 });
 
-export function getStripeClient(testMode: boolean = false): Stripe {
-  return testMode ? testStripe : liveStripe;
+// IMPORTANT: undefined defaults to test mode for backward compat
+// (org.stripeTestMode is not in Drizzle schema, reads as undefined)
+// Only explicit `false` triggers live mode
+export function getStripeClient(testMode?: boolean): Stripe {
+  return testMode === false ? liveStripe : testStripe;
 }
 
 // Legacy function - returns test client for backward compat
@@ -22,16 +25,16 @@ export async function getUncachableStripeClient(): Promise<Stripe> {
   return testStripe;
 }
 
-export function getStripePublishableKey(testMode: boolean = false): string {
-  return testMode
-    ? process.env.STRIPE_PUBLISHABLE_KEY!
-    : process.env.STRIPE_LIVE_PUBLISHABLE_KEY!;
+export function getStripePublishableKey(testMode?: boolean): string {
+  return testMode === false
+    ? process.env.STRIPE_LIVE_PUBLISHABLE_KEY!
+    : process.env.STRIPE_PUBLISHABLE_KEY!;
 }
 
-export function getWebhookSecret(testMode: boolean = false): string {
-  return testMode
-    ? process.env.STRIPE_WEBHOOK_SECRET!
-    : process.env.STRIPE_LIVE_WEBHOOK_SECRET!;
+export function getWebhookSecret(testMode?: boolean): string {
+  return testMode === false
+    ? process.env.STRIPE_LIVE_WEBHOOK_SECRET!
+    : process.env.STRIPE_WEBHOOK_SECRET!;
 }
 
 // Map test price IDs → live price IDs
@@ -42,9 +45,10 @@ const TEST_TO_LIVE_PRICE: Record<string, string> = {
 };
 
 // Get the correct price ID for the given Stripe mode
-export function getPriceId(testPriceId: string, testMode: boolean): string {
-  if (testMode) return testPriceId;
-  return TEST_TO_LIVE_PRICE[testPriceId] || testPriceId;
+// Only explicit false → live price mapping; undefined/true → keep test price
+export function getPriceId(priceId: string, testMode?: boolean): string {
+  if (testMode === false) return TEST_TO_LIVE_PRICE[priceId] || priceId;
+  return priceId;
 }
 
 // Map any price ID (test or live) to internal plan

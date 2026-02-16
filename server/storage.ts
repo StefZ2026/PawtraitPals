@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import {
   organizations,
@@ -35,6 +35,7 @@ export interface IStorage {
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, org: Partial<InsertOrganization>): Promise<Organization | undefined>;
   updateOrganizationStripeInfo(id: number, stripeInfo: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; subscriptionStatus?: string; stripeTestMode?: boolean }): Promise<Organization | undefined>;
+  getOrgStripeTestMode(orgId: number): Promise<boolean>;
   clearOrganizationOwner(id: number): Promise<void>;
   deleteOrganization(id: number): Promise<void>;
 
@@ -121,8 +122,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrganizationStripeInfo(id: number, stripeInfo: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; subscriptionStatus?: string; stripeTestMode?: boolean }): Promise<Organization | undefined> {
-    const [updated] = await db.update(organizations).set(stripeInfo).where(eq(organizations.id, id)).returning();
+    // Handle stripeTestMode separately via raw SQL (not in Drizzle schema)
+    const { stripeTestMode, ...drizzleFields } = stripeInfo;
+    if (Object.keys(drizzleFields).length > 0) {
+      await db.update(organizations).set(drizzleFields).where(eq(organizations.id, id));
+    }
+    if (stripeTestMode !== undefined) {
+      try {
+        await pool.query('UPDATE organizations SET stripe_test_mode = $1 WHERE id = $2', [stripeTestMode, id]);
+      } catch (e: any) {
+        console.warn('[stripe] Could not set stripeTestMode:', e.message);
+      }
+    }
+    const [updated] = await db.select().from(organizations).where(eq(organizations.id, id));
     return updated;
+  }
+
+  async getOrgStripeTestMode(orgId: number): Promise<boolean> {
+    try {
+      const result = await pool.query('SELECT stripe_test_mode FROM organizations WHERE id = $1', [orgId]);
+      // Default to true (test mode) for backward compat — all existing data is from test Stripe
+      return result.rows[0]?.stripe_test_mode ?? true;
+    } catch {
+      // Column may not exist yet, default to test mode for safety
+      return true;
+    }
   }
 
   async clearOrganizationOwner(id: number): Promise<void> {

@@ -56,14 +56,21 @@ const planDefinitions = [
 export async function seedDatabase() {
   console.log("Checking if seed data exists...");
 
-  // Migration: add stripe_test_mode column if it doesn't exist
+  // Migration: add stripe_test_mode column if it doesn't exist (with timeout to avoid blocking startup)
   try {
-    await pool.query('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_test_mode BOOLEAN DEFAULT false NOT NULL');
-    // Mark existing Stripe-connected orgs as test mode (all current data is from test Stripe)
-    const migResult = await pool.query('UPDATE organizations SET stripe_test_mode = true WHERE stripe_customer_id IS NOT NULL AND stripe_test_mode = false');
-    if (migResult.rowCount && migResult.rowCount > 0) {
-      console.log(`[migration] Set ${migResult.rowCount} existing org(s) to Stripe test mode`);
-    }
+    const migTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
+    await Promise.race([
+      (async () => {
+        await pool.query('SET LOCAL statement_timeout = 8000');
+        await pool.query('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_test_mode BOOLEAN DEFAULT false NOT NULL');
+        const migResult = await pool.query('UPDATE organizations SET stripe_test_mode = true WHERE stripe_customer_id IS NOT NULL AND stripe_test_mode = false');
+        if (migResult.rowCount && migResult.rowCount > 0) {
+          console.log(`[migration] Set ${migResult.rowCount} existing org(s) to Stripe test mode`);
+        }
+        console.log('[migration] stripe_test_mode column ready');
+      })(),
+      migTimeout,
+    ]);
   } catch (migErr: any) {
     console.log('[migration] stripe_test_mode:', migErr.message);
   }
