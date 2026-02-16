@@ -71,4 +71,38 @@ export function registerAuthRoutes(app: Express): void {
       res.status(500).json({ message: 'Failed to fetch user' });
     }
   });
+
+  // Server-side signup using admin API (bypasses email rate limits)
+  app.post('/api/auth/signup', async (req, res) => {
+    try {
+      const { email, password, firstName, lastName } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      const { data, error } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          first_name: firstName || '',
+          last_name: lastName || '',
+        },
+      });
+
+      if (error) {
+        console.error('Signup error:', error.message);
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.json({ user: { id: data.user.id, email: data.user.email } });
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      res.status(500).json({ error: 'Failed to create account' });
+    }
+  });
 }

@@ -56,21 +56,28 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      // Create account via server (bypasses Supabase email rate limits)
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: signupEmail,
+          password: signupPassword,
+          firstName,
+          lastName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Signup failed");
+
+      // Auto-login with the new credentials
+      const { error: loginError } = await supabase.auth.signInWithPassword({
         email: signupEmail,
         password: signupPassword,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          },
-        },
       });
-      if (error) throw error;
-      toast({
-        title: "Account created!",
-        description: "Check your email to verify your account, then log in.",
-      });
+      if (loginError) throw loginError;
+
+      setLocation("/dashboard");
     } catch (error: any) {
       toast({
         title: "Signup failed",
