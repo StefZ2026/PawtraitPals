@@ -1,5 +1,6 @@
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -10,11 +11,14 @@ import {
   Heart,
   Printer,
   Pencil,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ShareButtons } from "@/components/share-buttons";
 import { AdminFloatingButton } from "@/components/admin-button";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import type { Dog as DogType, Portrait, Organization } from "@shared/schema";
 
 interface DogWithPortrait extends DogType {
@@ -26,6 +30,9 @@ interface DogWithPortrait extends DogType {
 export default function DogProfile() {
   const params = useParams<{ id: string }>();
   const { user, isAuthenticated, isAdmin } = useAuth();
+  const { toast } = useToast();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
   const dogId = params.id;
 
   const { data: dog, isLoading, error } = useQuery<DogWithPortrait>({
@@ -47,6 +54,29 @@ export default function DogProfile() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSavePawfile = async () => {
+    if (!cardRef.current) return;
+    setSaving(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(cardRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+      const link = document.createElement("a");
+      link.download = `${dog?.name || "pawfile"}-pawfile.png`;
+      link.href = dataUrl;
+      link.click();
+      toast({ title: "Pawfile Saved!", description: `${dog?.name}'s pawfile has been downloaded.` });
+    } catch (err) {
+      console.error("Failed to save pawfile:", err);
+      toast({ title: "Save Failed", description: "Could not save the pawfile image. Try the Print button instead.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (isLoading) {
@@ -123,6 +153,7 @@ export default function DogProfile() {
 
         <div className="max-w-lg mx-auto">
           <div
+            ref={cardRef}
             className="bg-white dark:bg-card border-[3px] border-primary/20 dark:border-primary/30 rounded-lg overflow-hidden shadow-lg print:shadow-none print:border-[3px] print:rounded-none"
             data-testid="showcase-card"
           >
@@ -225,6 +256,10 @@ export default function DogProfile() {
           )}
 
           <div className="flex flex-wrap gap-2 mt-2 print:hidden">
+            <Button variant="outline" onClick={handleSavePawfile} disabled={saving} className="gap-2" data-testid="button-save-pawfile">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Save Pawfile
+            </Button>
             <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
               <Printer className="h-4 w-4" />
               Print
