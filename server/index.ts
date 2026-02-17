@@ -87,47 +87,60 @@ app.use((req, res, next) => {
   next();
 });
 
-// Bind to port FIRST so Render health check sees the server is up
-const port = parseInt(process.env.PORT || "5000", 10);
-httpServer.listen({ port, host: "0.0.0.0" }, () => {
-  log(`serving on port ${port}`);
+// Health check endpoint - responds immediately
+app.get("/healthz", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
 });
 
-// Set keep-alive timeouts for Render compatibility
-httpServer.keepAliveTimeout = 120000;
-httpServer.headersTimeout = 125000;
+const port = parseInt(process.env.PORT || "5000", 10);
 
-// Then initialize DB and routes in background
-(async () => {
-  try {
-    await seedDatabase();
-  } catch (error) {
-    console.error("Error seeding database:", error);
-  }
+// Bind to port FIRST so Render sees the server is alive
+httpServer.listen({ port, host: "0.0.0.0" }, () => {
+  log(`serving on port ${port}`);
 
-  setupOgMetaRoutes(app);
-
-  await registerRoutes(httpServer, app);
-
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
+  // Initialize everything AFTER the server is listening
+  (async () => {
+    try {
+      await seedDatabase();
+      log("Database seeded");
+    } catch (error) {
+      console.error("Error seeding database:", error);
     }
 
-    return res.status(status).json({ message });
+    try {
+      setupOgMetaRoutes(app);
+      log("OG meta routes ready");
+    } catch (error) {
+      console.error("Error setting up OG routes:", error);
+    }
+
+    try {
+      await registerRoutes(httpServer, app);
+      log("API routes registered");
+    } catch (error) {
+      console.error("Error registering routes:", error);
+    }
+
+    app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      console.error("Internal Server Error:", err);
+      if (res.headersSent) return next(err);
+      return res.status(status).json({ message });
+    });
+
+    if (process.env.NODE_ENV === "production") {
+      serveStatic(app);
+    } else {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    }
+
+    log("All routes and middleware initialized");
+  })().catch(err => {
+    console.error("Fatal startup error:", err);
   });
+});
 
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
-  }
-
-  log("All routes and middleware initialized");
-})();
+httpServer.keepAliveTimeout = 120000;
+httpServer.headersTimeout = 125000;
