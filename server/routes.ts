@@ -1510,7 +1510,7 @@ export async function registerRoutes(
       res.set({
         'Content-Type': 'image/png',
         'Content-Length': imageBuffer.length.toString(),
-        'Cache-Control': 'public, max-age=1800',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       });
       res.send(imageBuffer);
     } catch (error) {
@@ -1527,7 +1527,7 @@ export async function registerRoutes(
       res.set({
         'Content-Type': 'image/png',
         'Content-Length': imageBuffer.length.toString(),
-        'Cache-Control': 'public, max-age=1800',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       });
       res.send(imageBuffer);
     } catch (error) {

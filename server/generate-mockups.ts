@@ -95,8 +95,7 @@ export async function generateShowcaseMockup(orgId: number): Promise<Buffer> {
   const dogsWithPortraits: Array<{ name: string; breed: string; species: string; portraitBuffer: Buffer }> = [];
 
   for (const dog of dogs) {
-    const portraits = await storage.getPortraitsByDog(dog.id);
-    const portrait = portraits.find((p: any) => p.generatedImageUrl);
+    const portrait = await storage.getSelectedPortraitByDog(dog.id);
     if (portrait && portrait.generatedImageUrl) {
       try {
         const buf = await extractImageFromDataUri(portrait.generatedImageUrl);
@@ -196,8 +195,7 @@ export async function generatePawfileMockup(dogId: number): Promise<Buffer> {
   const org = await storage.getOrganization(dog.organizationId);
   if (!org) throw new Error("Organization not found");
 
-  const portraits = await storage.getPortraitsByDog(dog.id);
-  const portrait = portraits.find((p: any) => p.generatedImageUrl);
+  const portrait = await storage.getSelectedPortraitByDog(dog.id);
   if (!portrait || !portrait.generatedImageUrl) throw new Error("No portrait found");
 
   const portraitBuffer = await extractImageFromDataUri(portrait.generatedImageUrl);

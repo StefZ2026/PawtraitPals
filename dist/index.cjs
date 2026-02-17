@@ -984,6 +984,7 @@ var stripeService = new StripeService();
 
 // server/routes.ts
 var import_express_rate_limit = __toESM(require("express-rate-limit"), 1);
+var import_twilio = __toESM(require("twilio"), 1);
 
 // server/content-filter.ts
 var blockedWords = [
@@ -1161,8 +1162,7 @@ async function generateShowcaseMockup(orgId) {
   const dogs2 = await storage.getDogsByOrganization(orgId);
   const dogsWithPortraits = [];
   for (const dog of dogs2) {
-    const portraits2 = await storage.getPortraitsByDog(dog.id);
-    const portrait = portraits2.find((p) => p.generatedImageUrl);
+    const portrait = await storage.getSelectedPortraitByDog(dog.id);
     if (portrait && portrait.generatedImageUrl) {
       try {
         const buf = await extractImageFromDataUri(portrait.generatedImageUrl);
@@ -1230,8 +1230,7 @@ async function generatePawfileMockup(dogId) {
   if (!dog) throw new Error("Dog not found");
   const org = await storage.getOrganization(dog.organizationId);
   if (!org) throw new Error("Organization not found");
-  const portraits2 = await storage.getPortraitsByDog(dog.id);
-  const portrait = portraits2.find((p) => p.generatedImageUrl);
+  const portrait = await storage.getSelectedPortraitByDog(dog.id);
   if (!portrait || !portrait.generatedImageUrl) throw new Error("No portrait found");
   const portraitBuffer = await extractImageFromDataUri(portrait.generatedImageUrl);
   const composites = [];
@@ -2931,7 +2930,7 @@ ${issues.join("\n")}`);
       res.set({
         "Content-Type": "image/png",
         "Content-Length": imageBuffer.length.toString(),
-        "Cache-Control": "public, max-age=1800"
+        "Cache-Control": "no-cache, no-store, must-revalidate"
       });
       res.send(imageBuffer);
     } catch (error) {
@@ -2950,7 +2949,7 @@ ${issues.join("\n")}`);
       res.set({
         "Content-Type": "image/png",
         "Content-Length": imageBuffer.length.toString(),
-        "Cache-Control": "public, max-age=1800"
+        "Cache-Control": "no-cache, no-store, must-revalidate"
       });
       res.send(imageBuffer);
     } catch (error) {
@@ -3661,36 +3660,25 @@ ${issues.join("\n")}`);
       if (!/^\+?1?\d{10,15}$/.test(cleaned)) {
         return res.status(400).json({ error: "Please enter a valid phone number" });
       }
-      const clicksendUser = process.env.CLICKSEND_USERNAME;
-      const clicksendKey = process.env.CLICKSEND_API_KEY;
-      if (!clicksendUser || !clicksendKey) {
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+      if (!accountSid || !apiKeySid || !apiKeySecret || !messagingServiceSid) {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
+      const client = (0, import_twilio.default)(apiKeySid, apiKeySecret, { accountSid });
       const phone = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
-      const response = await fetch("https://rest.clicksend.com/v3/sms/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Basic " + Buffer.from(`${clicksendUser}:${clicksendKey}`).toString("base64")
-        },
-        body: JSON.stringify({
-          messages: [{
-            source: "pawtrait-pals",
-            body: message,
-            to: phone
-          }]
-        })
+      await client.messages.create({
+        body: message,
+        messagingServiceSid,
+        to: phone
       });
-      const result = await response.json();
-      if (!response.ok || result.http_code !== 200) {
-        const errMsg = result?.data?.messages?.[0]?.status || result?.response_msg || "SMS send failed";
-        console.error("ClickSend error:", JSON.stringify(result));
-        return res.status(500).json({ error: errMsg });
-      }
       res.json({ success: true });
     } catch (error) {
       console.error("SMS send error:", error);
-      res.status(500).json({ error: error?.message || "Failed to send text message" });
+      const twilioMsg = error?.message || "Failed to send text message";
+      res.status(500).json({ error: twilioMsg });
     }
   });
   return httpServer2;
