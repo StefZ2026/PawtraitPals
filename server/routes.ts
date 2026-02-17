@@ -2431,9 +2431,8 @@ export async function registerRoutes(
     }
     if (!orgId) return res.status(400).json({ error: "No organization found" });
 
-    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtrait-pals.onrender.com';
-    const redirectUri = `${proto}://${host}/api/instagram/callback`;
+    // Hardcode redirect URI to ensure exact match between connect and callback
+    const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
 
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
 
@@ -2451,22 +2450,22 @@ export async function registerRoutes(
     const { code, state, error: igError } = req.query;
     if (igError || !code || !state) {
       console.error("[instagram] OAuth error or missing params:", { igError, hasCode: !!code, hasState: !!state });
-      return res.redirect('/settings?instagram=error');
+      return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(String(igError || 'missing_params')));
     }
 
     let stateData: { orgId: number; userId: string };
     try {
       stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
     } catch {
-      return res.redirect('/settings?instagram=error');
+      return res.redirect('/settings?instagram=error&detail=invalid_state');
     }
 
-    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtrait-pals.onrender.com';
-    const redirectUri = `${proto}://${host}/api/instagram/callback`;
+    // Always use https for Render (SSL terminated at load balancer)
+    const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
 
     try {
       // Exchange code for short-lived token via Instagram API
+      console.log(`[instagram] Exchanging code for token, redirect_uri: ${redirectUri}, appId: ${appId}`);
       const tokenParams = new URLSearchParams({
         client_id: appId,
         client_secret: appSecret,
@@ -2482,11 +2481,13 @@ export async function registerRoutes(
       const tokenData = await tokenRes.json() as any;
       if (!tokenData.access_token) {
         console.error("[instagram] Token exchange failed:", tokenData);
-        throw new Error(tokenData.error_message || tokenData.error?.message || "Failed to get access token");
+        const errMsg = tokenData.error_message || tokenData.error?.message || "Token exchange failed";
+        throw new Error(errMsg);
       }
 
       const shortToken = tokenData.access_token;
       const igUserId = String(tokenData.user_id);
+      console.log(`[instagram] Got short-lived token for user ${igUserId}`);
 
       // Exchange for long-lived token (60 days)
       const longRes = await fetch(
@@ -2495,6 +2496,7 @@ export async function registerRoutes(
       const longData = await longRes.json() as any;
       const longToken = longData.access_token || shortToken;
       const expiresIn = longData.expires_in || 5184000; // default 60 days
+      console.log(`[instagram] Got long-lived token, expires in ${expiresIn}s`);
 
       // Get Instagram username
       const profileRes = await fetch(
@@ -2520,7 +2522,7 @@ export async function registerRoutes(
       res.redirect(`/settings?instagram=connected&username=${igUsername || ''}`);
     } catch (error: any) {
       console.error("[instagram] OAuth callback error:", error);
-      res.redirect('/settings?instagram=error');
+      res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(error.message || 'unknown'));
     }
   });
 

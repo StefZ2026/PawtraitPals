@@ -107,7 +107,8 @@ export default function RescueInfo() {
       toast({ title: "No Instagram Business Account", description: "Switch your Instagram to a Business or Creator account and link it to your Facebook Page.", variant: "destructive" });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (igResult === 'error') {
-      toast({ title: "Instagram Connection Failed", description: "Something went wrong. Please try again.", variant: "destructive" });
+      const detail = params.get('detail');
+      toast({ title: "Instagram Connection Failed", description: detail || "Something went wrong. Please try again.", variant: "destructive" });
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
