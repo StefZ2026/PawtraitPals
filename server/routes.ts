@@ -8,6 +8,7 @@ import { isAuthenticated, registerAuthRoutes } from "./auth";
 import { stripeService } from "./stripeService";
 import { getStripePublishableKey, getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal, getPriceId } from "./stripeClient";
 import rateLimit from "express-rate-limit";
+import Twilio from "twilio";
 import { containsInappropriateLanguage } from "./content-filter";
 import { generateShowcaseMockup, generatePawfileMockup } from "./generate-mockups";
 import { isValidBreed } from "./breeds";
@@ -2310,7 +2311,7 @@ export async function registerRoutes(
     }
   });
 
-  // --- SMS sharing via ClickSend ---
+  // --- SMS sharing via Twilio ---
   const smsRateLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 5,
@@ -2333,41 +2334,29 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Please enter a valid phone number" });
       }
 
-      const clicksendUser = process.env.CLICKSEND_USERNAME;
-      const clicksendKey = process.env.CLICKSEND_API_KEY;
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
-      if (!clicksendUser || !clicksendKey) {
+      if (!accountSid || !apiKeySid || !apiKeySecret || !messagingServiceSid) {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
 
+      const client = Twilio(apiKeySid, apiKeySecret, { accountSid });
       const phone = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
 
-      const response = await fetch("https://rest.clicksend.com/v3/sms/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Basic " + Buffer.from(`${clicksendUser}:${clicksendKey}`).toString("base64"),
-        },
-        body: JSON.stringify({
-          messages: [{
-            source: "pawtrait-pals",
-            body: message,
-            to: phone,
-          }],
-        }),
+      await client.messages.create({
+        body: message,
+        messagingServiceSid,
+        to: phone,
       });
-
-      const result = await response.json();
-      if (!response.ok || result.http_code !== 200) {
-        const errMsg = result?.data?.messages?.[0]?.status || result?.response_msg || "SMS send failed";
-        console.error("ClickSend error:", JSON.stringify(result));
-        return res.status(500).json({ error: errMsg });
-      }
 
       res.json({ success: true });
     } catch (error: any) {
       console.error("SMS send error:", error);
-      res.status(500).json({ error: error?.message || "Failed to send text message" });
+      const twilioMsg = error?.message || "Failed to send text message";
+      res.status(500).json({ error: twilioMsg });
     }
   });
 
