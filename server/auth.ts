@@ -14,11 +14,17 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 export const isAuthenticated: RequestHandler = async (req: any, res, next) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Unauthorized' });
+  // Accept token from Authorization header or query param (for OAuth redirect flows)
+  let token: string | undefined;
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (req.query.token) {
+    token = req.query.token as string;
   }
 
-  const token = authHeader.substring(7);
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
 
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);

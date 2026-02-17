@@ -38,7 +38,7 @@ export default function RescueInfo() {
   const isAdminView = adminOrgId !== null && adminOrgId > 0;
 
   const [, navigate] = useLocation();
-  const { user, isLoading: authLoading, isAuthenticated, isAdmin, logout, isLoggingOut } = useAuth();
+  const { user, session, isLoading: authLoading, isAuthenticated, isAdmin, logout, isLoggingOut } = useAuth();
   const { toast } = useToast();
   const [editingSection, setEditingSection] = useState<SectionName | null>(null);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
@@ -903,9 +903,10 @@ export default function RescueInfo() {
                     variant="outline"
                     className="gap-2"
                     onClick={() => {
+                      const token = session?.access_token || '';
                       const url = isAdminView && adminOrgId
-                        ? `/api/instagram/connect?orgId=${adminOrgId}`
-                        : '/api/instagram/connect';
+                        ? `/api/instagram/connect?orgId=${adminOrgId}&token=${encodeURIComponent(token)}`
+                        : `/api/instagram/connect?token=${encodeURIComponent(token)}`;
                       window.location.href = url;
                     }}
                   >
