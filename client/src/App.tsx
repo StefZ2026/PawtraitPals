@@ -19,6 +19,8 @@ import RescueShowcase from "@/pages/rescue-showcase";
 import ChoosePlan from "@/pages/choose-plan";
 import Onboarding from "@/pages/onboarding";
 import Login from "@/pages/login";
+import Privacy from "@/pages/privacy";
+import Terms from "@/pages/terms";
 
 function Router() {
   return (
@@ -38,6 +40,8 @@ function Router() {
       <Route path="/pawfile/:id" component={DogProfile} />
       <Route path="/settings" component={RescueInfo} />
       <Route path="/rescue/:slug" component={RescueShowcase} />
+      <Route path="/privacy" component={Privacy} />
+      <Route path="/terms" component={Terms} />
       <Route component={NotFound} />
     </Switch>
   );

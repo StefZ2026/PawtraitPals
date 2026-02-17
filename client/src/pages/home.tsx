@@ -273,9 +273,12 @@ export default function Home() {
               </div>
               <span className="text-sm text-muted-foreground">Built for Rescue Organizations</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Helping rescue pets find their furever homes through art
-            </p>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span>Helping rescue pets find their furever homes through art</span>
+              <span className="hidden md:inline">·</span>
+              <Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
+              <Link href="/terms" className="hover:text-primary transition-colors">Terms of Service</Link>
+            </div>
           </div>
         </div>
       </footer>
