@@ -2414,7 +2414,7 @@ export async function registerRoutes(
 
   // Initiate Instagram OAuth flow (Instagram Business Login)
   app.get("/api/instagram/connect", isAuthenticated, async (req: Request, res: Response) => {
-    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
+    const appId = process.env.META_APP_ID;
     if (!appId) return res.status(503).json({ error: "Instagram integration not configured" });
 
     const userId = (req as any).user.claims.sub;
@@ -2443,8 +2443,8 @@ export async function registerRoutes(
 
   // Instagram OAuth callback (Instagram Business Login)
   app.get("/api/instagram/callback", async (req: Request, res: Response) => {
-    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
-    const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET;
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
     if (!appId || !appSecret) return res.status(503).send("Instagram integration not configured");
 
     const { code, state, error: igError } = req.query;
