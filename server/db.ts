@@ -24,7 +24,6 @@ function parseDbUrl(url: string) {
 }
 
 const dbConfig = parseDbUrl(process.env.DATABASE_URL);
-console.log(`[db] Connecting to ${(dbConfig as any).host || 'via connection string'}:${(dbConfig as any).port || '?'} as ${(dbConfig as any).user || '?'}`);
 
 export const pool = new Pool({
   ...dbConfig,

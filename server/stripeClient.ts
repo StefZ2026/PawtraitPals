@@ -20,11 +20,6 @@ export function getStripeClient(testMode?: boolean): Stripe {
   return testMode === false ? liveStripe : testStripe;
 }
 
-// Legacy function - returns test client for backward compat
-export async function getUncachableStripeClient(): Promise<Stripe> {
-  return testStripe;
-}
-
 export function getStripePublishableKey(testMode?: boolean): string {
   return testMode === false
     ? process.env.STRIPE_LIVE_PUBLISHABLE_KEY!

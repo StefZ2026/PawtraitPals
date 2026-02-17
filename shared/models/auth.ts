@@ -1,17 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
-
-// Session storage table.
-// (IMPORTANT) Do not drop this table.
-export const sessions = pgTable(
-  "sessions",
-  {
-    sid: varchar("sid").primaryKey(),
-    sess: jsonb("sess").notNull(),
-    expire: timestamp("expire").notNull(),
-  },
-  (table) => [index("IDX_session_expire").on(table.expire)]
-);
+import { pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // User storage table.
 // (IMPORTANT) Do not drop this table.

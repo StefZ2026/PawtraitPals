@@ -6,7 +6,6 @@ import {
   Dog,
   Cat,
   ArrowLeft,
-  Download,
   ExternalLink,
   Heart,
   Printer,
@@ -39,18 +38,6 @@ export default function DogProfile() {
   });
 
   const canEdit = isAuthenticated && (isAdmin || (myOrg && dog?.organizationId === myOrg.id));
-
-  const handleDownload = () => {
-    const imageUrl = dog?.portrait?.generatedImageUrl || dog?.originalPhotoUrl;
-    if (!imageUrl) return;
-
-    const link = document.createElement("a");
-    link.href = imageUrl;
-    link.download = `${dog?.name || "portrait"}-pawfile.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const isCat = dog?.species === "cat";
   const speciesWord = isCat ? "cat" : "dog";
@@ -238,13 +225,6 @@ export default function DogProfile() {
           )}
 
           <div className="flex flex-wrap gap-2 mt-2 print:hidden">
-            {/* Download button hidden for Pawtrait Pals — re-enable for Pawtrait Pros */}
-            {false && (
-            <Button onClick={handleDownload} className="gap-2" data-testid="button-download">
-              <Download className="h-4 w-4" />
-              Download Pawfile
-            </Button>
-            )}
             <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
               <Printer className="h-4 w-4" />
               Print
