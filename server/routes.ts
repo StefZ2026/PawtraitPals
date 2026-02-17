@@ -2412,9 +2412,9 @@ export async function registerRoutes(
     }
   });
 
-  // Initiate Instagram OAuth flow (Instagram Business Login)
+  // Initiate Instagram OAuth flow via Facebook Login for Business
   app.get("/api/instagram/connect", isAuthenticated, async (req: Request, res: Response) => {
-    const appId = process.env.INSTAGRAM_APP_ID;
+    const appId = process.env.META_APP_ID;
     if (!appId) return res.status(503).json({ error: "Instagram integration not configured" });
 
     const userId = (req as any).user.claims.sub;
@@ -2431,26 +2431,25 @@ export async function registerRoutes(
     }
     if (!orgId) return res.status(400).json({ error: "No organization found" });
 
-    // Hardcode redirect URI to ensure exact match between connect and callback
     const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
-
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
+    const scopes = 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement';
 
-    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_business_basic&response_type=code&state=${state}`;
+    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code&state=${state}`;
 
     res.redirect(authUrl);
   });
 
-  // Instagram OAuth callback (Instagram Business Login)
+  // Instagram OAuth callback via Facebook Login for Business
   app.get("/api/instagram/callback", async (req: Request, res: Response) => {
-    const appId = process.env.INSTAGRAM_APP_ID;
+    const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
     if (!appId || !appSecret) return res.status(503).send("Instagram integration not configured");
 
-    const { code, state, error: igError } = req.query;
-    if (igError || !code || !state) {
-      console.error("[instagram] OAuth error or missing params:", { igError, hasCode: !!code, hasState: !!state });
-      return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(String(igError || 'missing_params')));
+    const { code, state, error: fbError, error_description } = req.query;
+    if (fbError || !code || !state) {
+      console.error("[instagram] OAuth error or missing params:", { fbError, error_description, hasCode: !!code, hasState: !!state });
+      return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(String(error_description || fbError || 'missing_params')));
     }
 
     let stateData: { orgId: number; userId: string };
@@ -2460,53 +2459,65 @@ export async function registerRoutes(
       return res.redirect('/settings?instagram=error&detail=invalid_state');
     }
 
-    // Always use https for Render (SSL terminated at load balancer)
     const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
 
     try {
-      // Exchange code for short-lived token via Instagram API
-      console.log(`[instagram] Exchanging code for token, redirect_uri: ${redirectUri}, appId: ${appId}`);
-      const tokenParams = new URLSearchParams({
-        client_id: appId,
-        client_secret: appSecret,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-        code: code as string,
-      });
-      const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: tokenParams.toString(),
-      });
+      // Step 1: Exchange code for Facebook user access token
+      console.log(`[instagram] Exchanging code for Facebook token via graph.facebook.com`);
+      const tokenRes = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code as string)}`
+      );
       const tokenData = await tokenRes.json() as any;
       if (!tokenData.access_token) {
-        console.error("[instagram] Token exchange failed:", tokenData);
-        const errMsg = tokenData.error_message || tokenData.error?.message || "Token exchange failed";
-        throw new Error(errMsg);
+        console.error("[instagram] Facebook token exchange failed:", tokenData);
+        throw new Error(tokenData.error?.message || "Facebook token exchange failed");
+      }
+      const userToken = tokenData.access_token;
+      console.log(`[instagram] Got Facebook user access token`);
+
+      // Step 2: Get user's Facebook Pages (page tokens are already long-lived)
+      const pagesRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&access_token=${userToken}`
+      );
+      const pagesData = await pagesRes.json() as any;
+      if (!pagesData.data || pagesData.data.length === 0) {
+        throw new Error("No Facebook Pages found. Your Instagram Business account must be connected to a Facebook Page.");
+      }
+      console.log(`[instagram] Found ${pagesData.data.length} Facebook Page(s)`);
+
+      // Step 3: Find the first page with an Instagram Business Account
+      let igAccountId: string | null = null;
+      let pageAccessToken: string | null = null;
+      let pageId: string | null = null;
+      let igUsername: string | null = null;
+
+      for (const page of pagesData.data) {
+        const igRes = await fetch(
+          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+        );
+        const igData = await igRes.json() as any;
+        if (igData.instagram_business_account) {
+          igAccountId = igData.instagram_business_account.id;
+          pageAccessToken = page.access_token;
+          pageId = page.id;
+
+          // Get Instagram username
+          const profileRes = await fetch(
+            `https://graph.facebook.com/v21.0/${igAccountId}?fields=username,name&access_token=${pageAccessToken}`
+          );
+          const profileData = await profileRes.json() as any;
+          igUsername = profileData.username || null;
+          console.log(`[instagram] Found IG account @${igUsername} (${igAccountId}) on page ${page.name} (${page.id})`);
+          break;
+        }
       }
 
-      const shortToken = tokenData.access_token;
-      const igUserId = String(tokenData.user_id);
-      console.log(`[instagram] Got short-lived token for user ${igUserId}`);
+      if (!igAccountId || !pageAccessToken) {
+        throw new Error("No Instagram Business account found linked to your Facebook Pages. Make sure your Instagram account is a Business or Creator account connected to a Facebook Page.");
+      }
 
-      // Exchange for long-lived token (60 days)
-      const longRes = await fetch(
-        `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`
-      );
-      const longData = await longRes.json() as any;
-      const longToken = longData.access_token || shortToken;
-      const expiresIn = longData.expires_in || 5184000; // default 60 days
-      console.log(`[instagram] Got long-lived token, expires in ${expiresIn}s`);
-
-      // Get Instagram username
-      const profileRes = await fetch(
-        `https://graph.instagram.com/v21.0/me?fields=user_id,username&access_token=${longToken}`
-      );
-      const profileData = await profileRes.json() as any;
-      const igUsername = profileData.username || null;
-
-      // Store in database
-      const expiresAt = new Date(Date.now() + expiresIn * 1000);
+      // Page access tokens from /me/accounts are long-lived (~60 days)
+      const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
       await pool.query(
         `UPDATE organizations SET
           instagram_access_token = $1,
@@ -2515,10 +2526,10 @@ export async function registerRoutes(
           instagram_page_id = $4,
           instagram_token_expires_at = $5
         WHERE id = $6`,
-        [longToken, igUserId, igUsername, null, expiresAt, stateData.orgId]
+        [pageAccessToken, igAccountId, igUsername, pageId, expiresAt, stateData.orgId]
       );
 
-      console.log(`[instagram] Connected @${igUsername} (user ${igUserId}) to org ${stateData.orgId}`);
+      console.log(`[instagram] Connected @${igUsername} (IG ${igAccountId}, Page ${pageId}) to org ${stateData.orgId}`);
       res.redirect(`/settings?instagram=connected&username=${igUsername || ''}`);
     } catch (error: any) {
       console.error("[instagram] OAuth callback error:", error);
@@ -2585,7 +2596,7 @@ export async function registerRoutes(
         access_token: row.instagram_access_token,
       });
       const containerRes = await fetch(
-        `https://graph.instagram.com/v21.0/${row.instagram_user_id}/media`,
+        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -2606,7 +2617,7 @@ export async function registerRoutes(
         access_token: row.instagram_access_token,
       });
       const publishRes = await fetch(
-        `https://graph.instagram.com/v21.0/${row.instagram_user_id}/media_publish`,
+        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media_publish`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
