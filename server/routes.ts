@@ -6,9 +6,8 @@ import { z } from "zod";
 import { generateImage, editImage } from "./gemini";
 import { isAuthenticated, registerAuthRoutes } from "./auth";
 import { stripeService } from "./stripeService";
-import { getStripePublishableKey, getStripeClient, getUncachableStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal, getPriceId } from "./stripeClient";
+import { getStripePublishableKey, getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal, getPriceId } from "./stripeClient";
 import rateLimit from "express-rate-limit";
-import Twilio from "twilio";
 import { containsInappropriateLanguage } from "./content-filter";
 import { generateShowcaseMockup, generatePawfileMockup } from "./generate-mockups";
 import { isValidBreed } from "./breeds";
@@ -56,6 +55,7 @@ async function generateUniqueSlug(name: string, excludeOrgId?: number): Promise<
 }
 
 const MAX_ADDITIONAL_SLOTS = 5;
+const MAX_EDITS_PER_IMAGE = 4;
 
 async function validateAndCleanStripeData(orgId: number): Promise<{ customerId: string | null; subscriptionId: string | null; subscriptionStatus: string | null; cleaned: boolean }> {
   const org = await storage.getOrganization(orgId);
@@ -272,7 +272,7 @@ export async function registerRoutes(
       }
 
       try {
-        const stripe = await getUncachableStripeClient();
+        const stripe = getStripeClient(true);
         const dbPlans = await storage.getAllSubscriptionPlans();
         let plansSynced = 0;
         for (const plan of dbPlans) {
@@ -671,18 +671,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching rescue showcase:", error);
       res.status(500).json({ error: "Failed to fetch rescue" });
-    }
-  });
-
-  // Diagnostic health check (temporary)
-  app.get("/api/health-check", async (req: Request, res: Response) => {
-    const dbUrl = process.env.DATABASE_URL || '';
-    const parsed = (() => { try { const u = new URL(dbUrl); return { user: u.username, host: u.hostname, port: u.port, db: u.pathname }; } catch { return { raw: dbUrl.substring(0, 30) }; } })();
-    try {
-      const plans = await storage.getAllSubscriptionPlans();
-      res.json({ status: "ok", planCount: plans.length, connection: parsed });
-    } catch (error: any) {
-      res.status(500).json({ status: "error", message: error.message, connection: parsed, code: error.code });
     }
   });
 
@@ -1641,7 +1629,7 @@ export async function registerRoutes(
       }
 
       const MAX_STYLES_PER_PET = 5;
-      const MAX_EDITS_PER_IMAGE = 4;
+
       let existingPortrait = null;
       let isNewPortrait = false;
 
@@ -1750,7 +1738,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Your 30-day free trial has expired. Please upgrade to a paid plan to continue." });
       }
 
-      const MAX_EDITS_PER_IMAGE = 4;
+
 
       if (portraitId) {
         const portrait = await storage.getPortrait(parseInt(portraitId));
@@ -2322,7 +2310,7 @@ export async function registerRoutes(
     }
   });
 
-  // --- SMS sharing via Twilio ---
+  // --- SMS sharing via ClickSend ---
   const smsRateLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 5,
@@ -2345,29 +2333,41 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Please enter a valid phone number" });
       }
 
-      const accountSid = process.env.TWILIO_ACCOUNT_SID;
-      const apiKeySid = process.env.TWILIO_API_KEY_SID;
-      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
-      const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+      const clicksendUser = process.env.CLICKSEND_USERNAME;
+      const clicksendKey = process.env.CLICKSEND_API_KEY;
 
-      if (!accountSid || !apiKeySid || !apiKeySecret || !fromNumber) {
+      if (!clicksendUser || !clicksendKey) {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
 
-      const client = Twilio(apiKeySid, apiKeySecret, { accountSid });
       const phone = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
 
-      await client.messages.create({
-        body: message,
-        from: fromNumber,
-        to: phone,
+      const response = await fetch("https://rest.clicksend.com/v3/sms/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Basic " + Buffer.from(`${clicksendUser}:${clicksendKey}`).toString("base64"),
+        },
+        body: JSON.stringify({
+          messages: [{
+            source: "pawtrait-pals",
+            body: message,
+            to: phone,
+          }],
+        }),
       });
+
+      const result = await response.json();
+      if (!response.ok || result.http_code !== 200) {
+        const errMsg = result?.data?.messages?.[0]?.status || result?.response_msg || "SMS send failed";
+        console.error("ClickSend error:", JSON.stringify(result));
+        return res.status(500).json({ error: errMsg });
+      }
 
       res.json({ success: true });
     } catch (error: any) {
       console.error("SMS send error:", error);
-      const twilioMsg = error?.message || "Failed to send text message";
-      res.status(500).json({ error: twilioMsg });
+      res.status(500).json({ error: error?.message || "Failed to send text message" });
     }
   });
 
