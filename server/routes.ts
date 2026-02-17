@@ -2437,7 +2437,7 @@ export async function registerRoutes(
 
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
 
-    const authUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_business_basic,instagram_content_publish&response_type=code&state=${state}`;
+    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_business_basic&response_type=code&state=${state}`;
 
     res.redirect(authUrl);
   });
