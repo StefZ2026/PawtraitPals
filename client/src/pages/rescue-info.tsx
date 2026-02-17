@@ -43,6 +43,7 @@ export default function RescueInfo() {
   const [editingSection, setEditingSection] = useState<SectionName | null>(null);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [igDisconnecting, setIgDisconnecting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -79,6 +80,37 @@ export default function RescueInfo() {
     queryKey: ["/api/my-dogs"],
     enabled: isAuthenticated && !isAdminView,
   });
+
+  const { data: igStatus, refetch: refetchIg } = useQuery<{ connected: boolean; username?: string; orgId?: number }>({
+    queryKey: ["/api/instagram/status", isAdminView ? adminOrgId : undefined],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const url = isAdminView && adminOrgId ? `/api/instagram/status?orgId=${adminOrgId}` : '/api/instagram/status';
+      const res = await fetch(url, { headers });
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  // Handle Instagram callback redirect params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const igResult = params.get('instagram');
+    if (igResult === 'connected') {
+      toast({ title: "Instagram Connected!", description: `Your Instagram account is now linked.` });
+      refetchIg();
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (igResult === 'no_page') {
+      toast({ title: "No Facebook Page Found", description: "Your Instagram must be linked to a Facebook Page. Create one in Facebook settings first.", variant: "destructive" });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (igResult === 'no_ig_account') {
+      toast({ title: "No Instagram Business Account", description: "Switch your Instagram to a Business or Creator account and link it to your Facebook Page.", variant: "destructive" });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (igResult === 'error') {
+      toast({ title: "Instagram Connection Failed", description: "Something went wrong. Please try again.", variant: "destructive" });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const currentPlan = plans?.find(p => p.id === org?.planId);
   const petCount = isAdminView ? (adminOrg as OrgDetail)?.dogCount || 0 : myDogs.length;
@@ -811,6 +843,75 @@ export default function RescueInfo() {
                       ) : <span className="text-muted-foreground">&mdash;</span>}
                     </p>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Instagram Integration */}
+          <Card data-testid="section-instagram">
+            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-3">
+              <div className="flex items-center gap-2">
+                <SiInstagram className="h-5 w-5 text-primary" />
+                <div>
+                  <CardTitle className="text-base">Instagram Posting</CardTitle>
+                  <CardDescription>Connect your Instagram to post pet portraits directly</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {igStatus?.connected ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                      Connected
+                    </Badge>
+                    {igStatus.username && (
+                      <span className="text-sm text-muted-foreground">@{igStatus.username}</span>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={igDisconnecting}
+                    onClick={async () => {
+                      setIgDisconnecting(true);
+                      try {
+                        const headers = await getAuthHeaders();
+                        const url = isAdminView && adminOrgId
+                          ? `/api/instagram/disconnect?orgId=${adminOrgId}`
+                          : '/api/instagram/disconnect';
+                        await fetch(url, { method: 'DELETE', headers });
+                        toast({ title: "Instagram Disconnected" });
+                        refetchIg();
+                      } catch {
+                        toast({ title: "Failed to disconnect", variant: "destructive" });
+                      } finally {
+                        setIgDisconnecting(false);
+                      }
+                    }}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Connect your Instagram Business account to post pet portraits with one click from any pet's profile page.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      const url = isAdminView && adminOrgId
+                        ? `/api/instagram/connect?orgId=${adminOrgId}`
+                        : '/api/instagram/connect';
+                      window.location.href = url;
+                    }}
+                  >
+                    <SiInstagram className="h-4 w-4" />
+                    Connect Instagram
+                  </Button>
                 </div>
               )}
             </CardContent>

@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link2, Check, MessageCircle, Send, Loader2 } from "lucide-react";
-import { SiFacebook } from "react-icons/si";
+import { SiFacebook, SiInstagram } from "react-icons/si";
 import { FaXTwitter } from "react-icons/fa6";
 import { NextdoorIcon } from "@/components/nextdoor-icon";
 import { useAuth } from "@/hooks/use-auth";
@@ -22,21 +24,33 @@ interface ShareButtonsProps {
   url?: string;
   title: string;
   text: string;
+  dogId?: number;
+  dogName?: string;
+  dogBreed?: string;
 }
 
-export function ShareButtons({ url, title, text }: ShareButtonsProps) {
+export function ShareButtons({ url, title, text, dogId, dogName, dogBreed }: ShareButtonsProps) {
   const { toast } = useToast();
-  const { session } = useAuth();
+  const { session, isAuthenticated } = useAuth();
   const [copied, setCopied] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
+  const [igOpen, setIgOpen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [sending, setSending] = useState(false);
+  const [igPosting, setIgPosting] = useState(false);
+  const [igCaption, setIgCaption] = useState("");
   const isMobile = useIsMobile();
   const shareUrl = url || window.location.href;
   const encodedUrl = encodeURIComponent(shareUrl);
   const encodedText = encodeURIComponent(text);
   const smsBody = `${text} ${shareUrl}`;
   const smsHref = `sms:?body=${encodeURIComponent(smsBody)}`;
+
+  // Check Instagram connection status
+  const { data: igStatus } = useQuery<{ connected: boolean; username?: string; orgId?: number }>({
+    queryKey: ["/api/instagram/status"],
+    enabled: isAuthenticated && !!dogId,
+  });
 
   const handleCopyLink = async () => {
     await navigator.clipboard.writeText(shareUrl);
@@ -73,6 +87,35 @@ export function ShareButtons({ url, title, text }: ShareButtonsProps) {
     }
   };
 
+  const handleOpenIgPost = () => {
+    const defaultCaption = `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
+    setIgCaption(defaultCaption);
+    setIgOpen(true);
+  };
+
+  const handlePostToInstagram = async () => {
+    if (!dogId) return;
+    setIgPosting(true);
+    try {
+      const res = await fetch("/api/instagram/post", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ dogId, caption: igCaption }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to post");
+      toast({ title: "Posted to Instagram!", description: `${dogName || 'Pet'}'s portrait is now on Instagram.` });
+      setIgOpen(false);
+    } catch (err: any) {
+      toast({ title: "Instagram Post Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIgPosting(false);
+    }
+  };
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -89,6 +132,21 @@ export function ShareButtons({ url, title, text }: ShareButtonsProps) {
           </TooltipTrigger>
           <TooltipContent>Share on Facebook</TooltipContent>
         </Tooltip>
+        {igStatus?.connected && dogId ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={handleOpenIgPost}
+                data-testid="button-share-instagram"
+              >
+                <SiInstagram className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Post to Instagram{igStatus.username ? ` @${igStatus.username}` : ''}</TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -178,6 +236,39 @@ export function ShareButtons({ url, title, text }: ShareButtonsProps) {
             <Button onClick={handleSendSms} disabled={sending || !phoneNumber.trim()}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={igOpen} onOpenChange={setIgOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SiInstagram className="h-5 w-5" />
+              Post to Instagram
+            </DialogTitle>
+            <DialogDescription>
+              {igStatus?.username ? `Posting to @${igStatus.username}` : 'Post this portrait to your Instagram'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Textarea
+              value={igCaption}
+              onChange={(e) => setIgCaption(e.target.value)}
+              rows={5}
+              placeholder="Write a caption..."
+              disabled={igPosting}
+              className="resize-none"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIgOpen(false)} disabled={igPosting}>
+                Cancel
+              </Button>
+              <Button onClick={handlePostToInstagram} disabled={igPosting}>
+                {igPosting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <SiInstagram className="h-4 w-4 mr-2" />}
+                Post
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

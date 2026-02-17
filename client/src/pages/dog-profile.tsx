@@ -232,7 +232,7 @@ export default function DogProfile() {
           </div>
           <div className="mt-3 print:hidden">
             <p className="text-sm text-muted-foreground mb-2">Share {dog.name}'s pawfile:</p>
-            <ShareButtons title={shareTitle} text={shareText} />
+            <ShareButtons title={shareTitle} text={shareText} dogId={dog.id} dogName={dog.name} dogBreed={dog.breed || undefined} />
           </div>
         </div>
       </div>

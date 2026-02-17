@@ -28,7 +28,7 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-serif font-semibold mb-3">2. Description of Service</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Pawtrait Pals is a platform that helps animal rescue organizations showcase pets available for adoption through AI-generated artistic portraits. The Service includes pet profile management, AI portrait generation, public rescue showcase pages, and social media sharing tools.
+              Pawtrait Pals is a platform that helps animal rescue organizations showcase pets available for adoption through AI-generated artistic portraits. The Service includes pet profile management, AI portrait generation, public rescue showcase pages, social media sharing tools, and direct Instagram posting integration.
             </p>
           </section>
 
@@ -62,6 +62,7 @@ export default function Terms() {
               <li>Generating AI artistic portraits from your pet photos</li>
               <li>Displaying your organization and pet profiles on public showcase pages</li>
               <li>Creating Open Graph preview images for social media sharing</li>
+              <li>Posting pet portraits to connected social media accounts (Instagram) on your behalf when you request it</li>
             </ul>
             <p className="text-muted-foreground leading-relaxed mt-3">
               You represent that you have the right to upload all User Content and that it does not infringe on any third party's rights.
@@ -90,49 +91,70 @@ export default function Terms() {
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">8. Intellectual Property</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">8. Third-Party Integrations</h2>
+            <p className="text-muted-foreground leading-relaxed mb-3">
+              The Service integrates with third-party platforms including Instagram (Meta), Stripe, and Google Gemini. When you connect a third-party account:
+            </p>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+              <li>You authorize Pawtrait Pals to interact with that platform on your behalf</li>
+              <li>Your use of third-party platforms is subject to their respective terms and policies</li>
+              <li>You can disconnect third-party integrations at any time from your Settings page</li>
+              <li>Disconnecting immediately removes all stored credentials for that integration</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-serif font-semibold mb-3">9. Data Deletion and Account Closure</h2>
+            <p className="text-muted-foreground leading-relaxed">
+              You may request deletion of your account and all associated data at any time by contacting us at stefanie@pawtraitpals.com. Upon receiving a verified deletion request, we will delete your account data within 30 days. Some data may be retained as required by law (e.g., financial records). For full details on data retention and your privacy rights, see our{" "}
+              <a href="/privacy" className="text-primary hover:underline">Privacy Policy</a>.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-serif font-semibold mb-3">10. Intellectual Property</h2>
             <p className="text-muted-foreground leading-relaxed">
               The Pawtrait Pals name, logo, website design, and underlying technology are the property of Pawtrait Pals and are protected by applicable intellectual property laws. You may not copy, modify, distribute, or create derivative works from our Service without prior written consent.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">9. Disclaimer of Warranties</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">11. Disclaimer of Warranties</h2>
             <p className="text-muted-foreground leading-relaxed">
               The Service is provided "as is" and "as available" without warranties of any kind, whether express or implied. We do not warrant that the Service will be uninterrupted, error-free, or secure. We are not responsible for the accuracy of AI-generated content. We do not guarantee any specific outcome from using the Service, including but not limited to pet adoption rates.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">10. Limitation of Liability</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">12. Limitation of Liability</h2>
             <p className="text-muted-foreground leading-relaxed">
               To the maximum extent permitted by law, Pawtrait Pals shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Service. Our total liability for any claims relating to the Service shall not exceed the amount you paid us in the twelve (12) months preceding the claim.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">11. Termination</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">13. Termination</h2>
             <p className="text-muted-foreground leading-relaxed">
               We reserve the right to suspend or terminate your account at any time for violation of these Terms or for any other reason at our discretion. Upon termination, your right to use the Service ceases immediately. You may delete your account at any time by contacting us.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">12. Changes to Terms</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">14. Changes to Terms</h2>
             <p className="text-muted-foreground leading-relaxed">
               We may modify these Terms at any time. We will notify you of material changes by posting the updated Terms on this page and updating the "Last updated" date. Your continued use of the Service after changes constitutes acceptance of the updated Terms.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">13. Governing Law</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">15. Governing Law</h2>
             <p className="text-muted-foreground leading-relaxed">
               These Terms shall be governed by and construed in accordance with the laws of the United States, without regard to conflict of law provisions.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">14. Contact Us</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">16. Contact Us</h2>
             <p className="text-muted-foreground leading-relaxed">
               If you have questions about these Terms, please contact us at{" "}
               <a href="mailto:stefanie@pawtraitpals.com" className="text-primary hover:underline">
