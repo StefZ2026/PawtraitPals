@@ -106,7 +106,7 @@ export default function Terms() {
           <section>
             <h2 className="text-xl font-serif font-semibold mb-3">9. Data Deletion and Account Closure</h2>
             <p className="text-muted-foreground leading-relaxed">
-              You may request deletion of your account and all associated data at any time by contacting us at stefanie@pawtraitpals.com. Upon receiving a verified deletion request, we will delete your account data within 30 days. Some data may be retained as required by law (e.g., financial records). For full details on data retention and your privacy rights, see our{" "}
+              You may request deletion of your account and all associated data at any time by contacting us at support@pawtraitpals.com. Upon receiving a verified deletion request, we will delete your account data within 30 days. Some data may be retained as required by law (e.g., financial records). For full details on data retention and your privacy rights, see our{" "}
               <a href="/privacy" className="text-primary hover:underline">Privacy Policy</a>.
             </p>
           </section>
@@ -157,8 +157,8 @@ export default function Terms() {
             <h2 className="text-xl font-serif font-semibold mb-3">16. Contact Us</h2>
             <p className="text-muted-foreground leading-relaxed">
               If you have questions about these Terms, please contact us at{" "}
-              <a href="mailto:stefanie@pawtraitpals.com" className="text-primary hover:underline">
-                stefanie@pawtraitpals.com
+              <a href="mailto:support@pawtraitpals.com" className="text-primary hover:underline">
+                support@pawtraitpals.com
               </a>.
             </p>
           </section>

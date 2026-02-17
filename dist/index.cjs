@@ -3725,7 +3725,7 @@ ${issues.join("\n")}`);
     }
   });
   app2.get("/api/instagram/connect", isAuthenticated, async (req, res) => {
-    const appId = process.env.META_APP_ID;
+    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
     if (!appId) return res.status(503).json({ error: "Instagram integration not configured" });
     const userId = req.user.claims.sub;
     const orgIdParam = req.query.orgId ? parseInt(req.query.orgId) : null;
@@ -3740,18 +3740,19 @@ ${issues.join("\n")}`);
     }
     if (!orgId) return res.status(400).json({ error: "No organization found" });
     const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtraitpals.com";
+    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtrait-pals.onrender.com";
     const redirectUri = `${proto}://${host}/api/instagram/callback`;
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString("base64url");
-    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement&response_type=code&state=${state}`;
+    const authUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_business_basic,instagram_content_publish&response_type=code&state=${state}`;
     res.redirect(authUrl);
   });
   app2.get("/api/instagram/callback", async (req, res) => {
-    const appId = process.env.META_APP_ID;
-    const appSecret = process.env.META_APP_SECRET;
+    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
+    const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET;
     if (!appId || !appSecret) return res.status(503).send("Instagram integration not configured");
-    const { code, state, error: fbError } = req.query;
-    if (fbError || !code || !state) {
+    const { code, state, error: igError } = req.query;
+    if (igError || !code || !state) {
+      console.error("[instagram] OAuth error or missing params:", { igError, hasCode: !!code, hasState: !!state });
       return res.redirect("/settings?instagram=error");
     }
     let stateData;
@@ -3761,49 +3762,39 @@ ${issues.join("\n")}`);
       return res.redirect("/settings?instagram=error");
     }
     const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtraitpals.com";
+    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtrait-pals.onrender.com";
     const redirectUri = `${proto}://${host}/api/instagram/callback`;
     try {
-      const tokenRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`
-      );
+      const tokenParams = new URLSearchParams({
+        client_id: appId,
+        client_secret: appSecret,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        code
+      });
+      const tokenRes = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: tokenParams.toString()
+      });
       const tokenData = await tokenRes.json();
-      if (!tokenData.access_token) throw new Error(tokenData.error?.message || "Failed to get access token");
+      if (!tokenData.access_token) {
+        console.error("[instagram] Token exchange failed:", tokenData);
+        throw new Error(tokenData.error_message || tokenData.error?.message || "Failed to get access token");
+      }
+      const shortToken = tokenData.access_token;
+      const igUserId = String(tokenData.user_id);
       const longRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokenData.access_token}`
+        `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`
       );
       const longData = await longRes.json();
-      const longToken = longData.access_token || tokenData.access_token;
+      const longToken = longData.access_token || shortToken;
       const expiresIn = longData.expires_in || 5184e3;
-      const pagesRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${longToken}`);
-      const pagesData = await pagesRes.json();
-      if (!pagesData.data || pagesData.data.length === 0) {
-        return res.redirect("/settings?instagram=no_page");
-      }
-      let igUserId = null;
-      let igUsername = null;
-      let pageId = null;
-      let pageAccessToken = null;
-      for (const page of pagesData.data) {
-        const igRes = await fetch(
-          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${longToken}`
-        );
-        const igData = await igRes.json();
-        if (igData.instagram_business_account?.id) {
-          igUserId = igData.instagram_business_account.id;
-          pageId = page.id;
-          pageAccessToken = page.access_token || longToken;
-          const profileRes = await fetch(
-            `https://graph.facebook.com/v21.0/${igUserId}?fields=username&access_token=${longToken}`
-          );
-          const profileData = await profileRes.json();
-          igUsername = profileData.username || null;
-          break;
-        }
-      }
-      if (!igUserId) {
-        return res.redirect("/settings?instagram=no_ig_account");
-      }
+      const profileRes = await fetch(
+        `https://graph.instagram.com/v21.0/me?fields=user_id,username&access_token=${longToken}`
+      );
+      const profileData = await profileRes.json();
+      const igUsername = profileData.username || null;
       const expiresAt = new Date(Date.now() + expiresIn * 1e3);
       await pool.query(
         `UPDATE organizations SET
@@ -3813,9 +3804,9 @@ ${issues.join("\n")}`);
           instagram_page_id = $4,
           instagram_token_expires_at = $5
         WHERE id = $6`,
-        [pageAccessToken || longToken, igUserId, igUsername, pageId, expiresAt, stateData.orgId]
+        [longToken, igUserId, igUsername, null, expiresAt, stateData.orgId]
       );
-      console.log(`[instagram] Connected @${igUsername} to org ${stateData.orgId}`);
+      console.log(`[instagram] Connected @${igUsername} (user ${igUserId}) to org ${stateData.orgId}`);
       res.redirect(`/settings?instagram=connected&username=${igUsername || ""}`);
     } catch (error) {
       console.error("[instagram] OAuth callback error:", error);
@@ -3858,16 +3849,17 @@ ${issues.join("\n")}`);
       const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtraitpals.com";
       const imageUrl = `${proto}://${host}/api/portraits/${portrait.id}/image`;
       const postCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ""}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
+      const containerParams = new URLSearchParams({
+        image_url: imageUrl,
+        caption: postCaption,
+        access_token: row.instagram_access_token
+      });
       const containerRes = await fetch(
-        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media`,
+        `https://graph.instagram.com/v21.0/${row.instagram_user_id}/media`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            caption: postCaption,
-            access_token: row.instagram_access_token
-          })
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: containerParams.toString()
         }
       );
       const containerData = await containerRes.json();
@@ -3876,15 +3868,16 @@ ${issues.join("\n")}`);
         throw new Error(containerData.error.message || "Failed to create Instagram post");
       }
       const containerId = containerData.id;
+      const publishParams = new URLSearchParams({
+        creation_id: containerId,
+        access_token: row.instagram_access_token
+      });
       const publishRes = await fetch(
-        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media_publish`,
+        `https://graph.instagram.com/v21.0/${row.instagram_user_id}/media_publish`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            creation_id: containerId,
-            access_token: row.instagram_access_token
-          })
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: publishParams.toString()
         }
       );
       const publishData = await publishRes.json();

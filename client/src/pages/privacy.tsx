@@ -29,7 +29,7 @@ export default function Privacy() {
             <h2 className="text-xl font-serif font-semibold mb-3">2. Data Controller</h2>
             <p className="text-muted-foreground leading-relaxed">
               Pawtrait Pals is the data controller responsible for your personal data. If you have questions about how your data is processed, or wish to exercise your rights, contact us at{" "}
-              <a href="mailto:stefanie@pawtraitpals.com" className="text-primary hover:underline">stefanie@pawtraitpals.com</a>.
+              <a href="mailto:support@pawtraitpals.com" className="text-primary hover:underline">support@pawtraitpals.com</a>.
             </p>
           </section>
 
@@ -172,7 +172,7 @@ export default function Privacy() {
             </ul>
             <p className="text-muted-foreground leading-relaxed">
               To exercise any of these rights, please contact us at{" "}
-              <a href="mailto:stefanie@pawtraitpals.com" className="text-primary hover:underline">stefanie@pawtraitpals.com</a>.
+              <a href="mailto:support@pawtraitpals.com" className="text-primary hover:underline">support@pawtraitpals.com</a>.
               We will respond to your request within 30 days (or sooner as required by applicable law). We may ask you to verify your identity before processing your request.
             </p>
           </section>
@@ -206,8 +206,8 @@ export default function Privacy() {
             <p className="text-muted-foreground leading-relaxed mt-2">
               Pawtrait Pals<br />
               Email:{" "}
-              <a href="mailto:stefanie@pawtraitpals.com" className="text-primary hover:underline">
-                stefanie@pawtraitpals.com
+              <a href="mailto:support@pawtraitpals.com" className="text-primary hover:underline">
+                support@pawtraitpals.com
               </a>
             </p>
             <p className="text-muted-foreground leading-relaxed mt-2">

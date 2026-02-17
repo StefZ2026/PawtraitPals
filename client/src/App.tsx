@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { AccessGate } from "@/components/access-gate";
+import { Footer } from "@/components/footer";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Create from "@/pages/create";
@@ -66,6 +67,7 @@ function App() {
           <AccessGate>
             <Toaster />
             <Router />
+            <Footer />
           </AccessGate>
         </TooltipProvider>
       </ThemeProvider>
