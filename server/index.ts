@@ -87,8 +87,18 @@ app.use((req, res, next) => {
   next();
 });
 
+// Bind to port FIRST so Render health check sees the server is up
+const port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen({ port, host: "0.0.0.0" }, () => {
+  log(`serving on port ${port}`);
+});
+
+// Set keep-alive timeouts for Render compatibility
+httpServer.keepAliveTimeout = 120000;
+httpServer.headersTimeout = 125000;
+
+// Then initialize DB and routes in background
 (async () => {
-  // Seed database with initial data
   try {
     await seedDatabase();
   } catch (error) {
@@ -112,9 +122,6 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -122,14 +129,5 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  log("All routes and middleware initialized");
 })();

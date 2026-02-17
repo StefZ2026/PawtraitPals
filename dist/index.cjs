@@ -4749,6 +4749,12 @@ app.use((req, res, next) => {
   });
   next();
 });
+var port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen({ port, host: "0.0.0.0" }, () => {
+  log(`serving on port ${port}`);
+});
+httpServer.keepAliveTimeout = 12e4;
+httpServer.headersTimeout = 125e3;
 (async () => {
   try {
     await seedDatabase();
@@ -4772,16 +4778,7 @@ app.use((req, res, next) => {
     const { setupVite: setupVite2 } = await Promise.resolve().then(() => (init_vite(), vite_exports));
     await setupVite2(httpServer, app);
   }
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0"
-    },
-    () => {
-      log(`serving on port ${port}`);
-    }
-  );
+  log("All routes and middleware initialized");
 })();
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
