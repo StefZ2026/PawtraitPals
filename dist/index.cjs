@@ -673,10 +673,15 @@ var recentUsers = /* @__PURE__ */ new Map();
 var CACHE_TTL = 5 * 60 * 1e3;
 var isAuthenticated = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+  let token;
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  } else if (req.query.token) {
+    token = req.query.token;
+  }
+  if (!token) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  const token = authHeader.substring(7);
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) {
@@ -3692,6 +3697,15 @@ ${issues.join("\n")}`);
           ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP
       `);
       console.log("[instagram] DB columns ready");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS instagram_debug_log (
+          id SERIAL PRIMARY KEY,
+          attempt_label TEXT,
+          redirect_uri_sent TEXT,
+          response_body TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
     } catch (e) {
       console.warn("[instagram] Could not add columns:", e.message);
     }
@@ -3725,8 +3739,8 @@ ${issues.join("\n")}`);
     }
   });
   app2.get("/api/instagram/connect", isAuthenticated, async (req, res) => {
-    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
-    if (!appId) return res.status(503).json({ error: "Instagram integration not configured" });
+    const appId = process.env.META_APP_ID;
+    if (!appId) return res.status(503).json({ error: "Instagram integration not configured (missing META_APP_ID)" });
     const userId = req.user.claims.sub;
     const orgIdParam = req.query.orgId ? parseInt(req.query.orgId) : null;
     const email = req.user.claims.email;
@@ -3739,62 +3753,77 @@ ${issues.join("\n")}`);
       if (org) orgId = org.id;
     }
     if (!orgId) return res.status(400).json({ error: "No organization found" });
-    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtrait-pals.onrender.com";
-    const redirectUri = `${proto}://${host}/api/instagram/callback`;
+    const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString("base64url");
-    const authUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_business_basic,instagram_content_publish&response_type=code&state=${state}`;
+    const scopes = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages";
+    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`;
     res.redirect(authUrl);
   });
   app2.get("/api/instagram/callback", async (req, res) => {
-    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
-    const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET;
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
     if (!appId || !appSecret) return res.status(503).send("Instagram integration not configured");
-    const { code, state, error: igError } = req.query;
-    if (igError || !code || !state) {
-      console.error("[instagram] OAuth error or missing params:", { igError, hasCode: !!code, hasState: !!state });
-      return res.redirect("/settings?instagram=error");
+    const { code, state, error: fbError, error_description, error_reason } = req.query;
+    if (fbError || !code || !state) {
+      console.error("[instagram] OAuth error or missing params:", { fbError, error_description, error_reason, hasCode: !!code, hasState: !!state });
+      return res.redirect("/settings?instagram=error&detail=" + encodeURIComponent(String(error_description || fbError || "missing_params")));
     }
     let stateData;
     try {
       stateData = JSON.parse(Buffer.from(state, "base64url").toString());
     } catch {
-      return res.redirect("/settings?instagram=error");
+      return res.redirect("/settings?instagram=error&detail=invalid_state");
     }
-    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtrait-pals.onrender.com";
-    const redirectUri = `${proto}://${host}/api/instagram/callback`;
+    const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
     try {
-      const tokenParams = new URLSearchParams({
-        client_id: appId,
-        client_secret: appSecret,
-        grant_type: "authorization_code",
-        redirect_uri: redirectUri,
-        code
-      });
-      const tokenRes = await fetch("https://api.instagram.com/oauth/access_token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: tokenParams.toString()
-      });
+      console.log(`[instagram] Exchanging code for Facebook token via graph.facebook.com`);
+      const tokenRes = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${encodeURIComponent(code)}`
+      );
       const tokenData = await tokenRes.json();
       if (!tokenData.access_token) {
-        console.error("[instagram] Token exchange failed:", tokenData);
-        throw new Error(tokenData.error_message || tokenData.error?.message || "Failed to get access token");
+        console.error("[instagram] Facebook token exchange failed:", tokenData);
+        try {
+          await pool.query(
+            `INSERT INTO instagram_debug_log (attempt_label, redirect_uri_sent, response_body, created_at)
+             VALUES ($1, $2, $3, NOW())`,
+            ["fb-token-exchange", redirectUri, JSON.stringify(tokenData)]
+          );
+        } catch (logErr) {
+        }
+        throw new Error(tokenData.error?.message || "Facebook token exchange failed");
       }
       const shortToken = tokenData.access_token;
-      const igUserId = String(tokenData.user_id);
+      console.log(`[instagram] Got short-lived Facebook token`);
+      console.log(`[instagram] Exchanging for long-lived Facebook token`);
       const longRes = await fetch(
-        `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`
+        `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortToken}`
       );
       const longData = await longRes.json();
       const longToken = longData.access_token || shortToken;
       const expiresIn = longData.expires_in || 5184e3;
-      const profileRes = await fetch(
-        `https://graph.instagram.com/v21.0/me?fields=user_id,username&access_token=${longToken}`
+      console.log(`[instagram] Got long-lived token (expires_in: ${expiresIn}s)`);
+      console.log(`[instagram] Looking up Instagram account via /me endpoint`);
+      const meRes = await fetch(
+        `https://graph.facebook.com/v21.0/me?fields=user_id,username,name&access_token=${longToken}`
       );
-      const profileData = await profileRes.json();
-      const igUsername = profileData.username || null;
+      const meData = await meRes.json();
+      console.log(`[instagram] /me response:`, JSON.stringify(meData));
+      try {
+        await pool.query(
+          `INSERT INTO instagram_debug_log (attempt_label, redirect_uri_sent, response_body, created_at)
+           VALUES ($1, $2, $3, NOW())`,
+          ["ig-me-lookup", "n/a", JSON.stringify(meData)]
+        );
+      } catch (logErr) {
+      }
+      const igUserId = meData.user_id || meData.id;
+      const igUsername = meData.username || null;
+      const pageId = null;
+      if (!igUserId) {
+        throw new Error("Could not retrieve Instagram account. Make sure your Instagram is a Professional (Business or Creator) account.");
+      }
+      console.log(`[instagram] Found IG account ${igUserId} (@${igUsername})`);
       const expiresAt = new Date(Date.now() + expiresIn * 1e3);
       await pool.query(
         `UPDATE organizations SET
@@ -3804,13 +3833,13 @@ ${issues.join("\n")}`);
           instagram_page_id = $4,
           instagram_token_expires_at = $5
         WHERE id = $6`,
-        [longToken, igUserId, igUsername, null, expiresAt, stateData.orgId]
+        [longToken, igUserId, igUsername, pageId, expiresAt, stateData.orgId]
       );
-      console.log(`[instagram] Connected @${igUsername} (user ${igUserId}) to org ${stateData.orgId}`);
+      console.log(`[instagram] Connected @${igUsername} (${igUserId}) to org ${stateData.orgId}`);
       res.redirect(`/settings?instagram=connected&username=${igUsername || ""}`);
     } catch (error) {
       console.error("[instagram] OAuth callback error:", error);
-      res.redirect("/settings?instagram=error");
+      res.redirect("/settings?instagram=error&detail=" + encodeURIComponent(error.message || "unknown"));
     }
   });
   app2.post("/api/instagram/post", isAuthenticated, async (req, res) => {
@@ -3855,7 +3884,7 @@ ${issues.join("\n")}`);
         access_token: row.instagram_access_token
       });
       const containerRes = await fetch(
-        `https://graph.instagram.com/v21.0/${row.instagram_user_id}/media`,
+        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -3873,7 +3902,7 @@ ${issues.join("\n")}`);
         access_token: row.instagram_access_token
       });
       const publishRes = await fetch(
-        `https://graph.instagram.com/v21.0/${row.instagram_user_id}/media_publish`,
+        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media_publish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -3919,6 +3948,18 @@ ${issues.join("\n")}`);
     } catch (error) {
       console.error("[instagram] Disconnect error:", error);
       res.status(500).json({ error: "Failed to disconnect Instagram" });
+    }
+  });
+  app2.get("/api/admin/instagram-debug", isAuthenticated, async (req, res) => {
+    const email = req.user.claims.email;
+    if (email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+    try {
+      const result = await pool.query(
+        `SELECT * FROM instagram_debug_log ORDER BY created_at DESC LIMIT 10`
+      );
+      res.json(result.rows);
+    } catch (e) {
+      res.json({ error: e.message, note: "Debug table may not exist yet" });
     }
   });
   return httpServer2;
@@ -4749,37 +4790,51 @@ app.use((req, res, next) => {
   });
   next();
 });
+app.get("/healthz", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 var port = parseInt(process.env.PORT || "5000", 10);
 httpServer.listen({ port, host: "0.0.0.0" }, () => {
   log(`serving on port ${port}`);
+  (async () => {
+    try {
+      await seedDatabase();
+      log("Database seeded");
+    } catch (error) {
+      console.error("Error seeding database:", error);
+    }
+    try {
+      setupOgMetaRoutes(app);
+      log("OG meta routes ready");
+    } catch (error) {
+      console.error("Error setting up OG routes:", error);
+    }
+    try {
+      await registerRoutes(httpServer, app);
+      log("API routes registered");
+    } catch (error) {
+      console.error("Error registering routes:", error);
+    }
+    app.use((err, _req, res, next) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      console.error("Internal Server Error:", err);
+      if (res.headersSent) return next(err);
+      return res.status(status).json({ message });
+    });
+    if (process.env.NODE_ENV === "production") {
+      serveStatic(app);
+    } else {
+      const { setupVite: setupVite2 } = await Promise.resolve().then(() => (init_vite(), vite_exports));
+      await setupVite2(httpServer, app);
+    }
+    log("All routes and middleware initialized");
+  })().catch((err) => {
+    console.error("Fatal startup error:", err);
+  });
 });
 httpServer.keepAliveTimeout = 12e4;
 httpServer.headersTimeout = 125e3;
-(async () => {
-  try {
-    await seedDatabase();
-  } catch (error) {
-    console.error("Error seeding database:", error);
-  }
-  setupOgMetaRoutes(app);
-  await registerRoutes(httpServer, app);
-  app.use((err, _req, res, next) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    console.error("Internal Server Error:", err);
-    if (res.headersSent) {
-      return next(err);
-    }
-    return res.status(status).json({ message });
-  });
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite: setupVite2 } = await Promise.resolve().then(() => (init_vite(), vite_exports));
-    await setupVite2(httpServer, app);
-  }
-  log("All routes and middleware initialized");
-})();
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   log

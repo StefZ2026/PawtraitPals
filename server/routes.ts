@@ -2444,8 +2444,8 @@ export async function registerRoutes(
     const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
 
-    // Facebook Login with Instagram permissions — redirect_uri registered under Facebook Login settings
-    const scopes = 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement';
+    // Facebook Login with new Instagram Business API permissions
+    const scopes = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages';
     const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`;
 
     res.redirect(authUrl);
@@ -2504,34 +2504,33 @@ export async function registerRoutes(
       const expiresIn = longData.expires_in || 5184000;
       console.log(`[instagram] Got long-lived token (expires_in: ${expiresIn}s)`);
 
-      // Step 3: Find Instagram Business Account via Facebook Pages
-      console.log(`[instagram] Looking up Instagram Business Account via Pages`);
-      const pagesRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,name}&access_token=${longToken}`
+      // Step 3: Get Instagram account info via Instagram Business API
+      console.log(`[instagram] Looking up Instagram account via /me endpoint`);
+      const meRes = await fetch(
+        `https://graph.facebook.com/v21.0/me?fields=user_id,username,name&access_token=${longToken}`
       );
-      const pagesData = await pagesRes.json() as any;
-      if (!pagesData.data || pagesData.data.length === 0) {
-        throw new Error("No Facebook Pages found. Your Instagram Business account must be linked to a Facebook Page.");
-      }
+      const meData = await meRes.json() as any;
+      console.log(`[instagram] /me response:`, JSON.stringify(meData));
 
-      // Find the first page that has an Instagram Business Account
-      let igAccount: { id: string; username?: string; name?: string } | null = null;
-      let pageId: string | null = null;
-      for (const page of pagesData.data) {
-        if (page.instagram_business_account) {
-          igAccount = page.instagram_business_account;
-          pageId = page.id;
-          console.log(`[instagram] Found IG account ${igAccount.id} (@${igAccount.username}) on page "${page.name}" (${page.id})`);
-          break;
-        }
-      }
+      // Store debug info
+      try {
+        await pool.query(
+          `INSERT INTO instagram_debug_log (attempt_label, redirect_uri_sent, response_body, created_at)
+           VALUES ($1, $2, $3, NOW())`,
+          ['ig-me-lookup', 'n/a', JSON.stringify(meData)]
+        );
+      } catch (logErr) { /* debug table may not exist */ }
 
-      if (!igAccount) {
-        throw new Error("No Instagram Business account linked to your Facebook Pages. Link your Instagram Professional account to a Facebook Page first.");
-      }
+      // The /me endpoint with instagram_business_basic returns the IG user
+      const igUserId = meData.user_id || meData.id;
+      const igUsername = meData.username || null;
+      const pageId: string | null = null;
 
-      const igUserId = igAccount.id;
-      const igUsername = igAccount.username || null;
+      if (!igUserId) {
+        throw new Error("Could not retrieve Instagram account. Make sure your Instagram is a Professional (Business or Creator) account.");
+      }
+      console.log(`[instagram] Found IG account ${igUserId} (@${igUsername})`);
+
 
       // Step 4: Store credentials
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
