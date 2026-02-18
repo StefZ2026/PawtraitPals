@@ -100,46 +100,36 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   };
 
   const handleIgButtonClick = async () => {
-    if (dogId) {
-      // Single dog page — go straight to caption editor
-      const defaultCaption = `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
+    if (!captureRef?.current) return;
+    // Always capture the full card (pawfile or showcase) — it has all the info
+    try {
+      toast({ title: "Capturing image...", description: "Please wait." });
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(captureRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+      setCapturedImage(dataUrl);
+      const defaultCaption = dogId
+        ? `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`
+        : `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Visit ${shareUrl} to learn more.\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
       setIgCaption(defaultCaption);
-      setCapturedImage(null);
       setIgOpen(true);
-    } else if (captureRef?.current) {
-      // Showcase page — capture the collage as an image
-      try {
-        toast({ title: "Capturing showcase...", description: "Please wait." });
-        const { toPng } = await import("html-to-image");
-        const dataUrl = await toPng(captureRef.current, {
-          quality: 0.95,
-          pixelRatio: 2,
-          backgroundColor: "#ffffff",
-        });
-        setCapturedImage(dataUrl);
-        const defaultCaption = `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Visit ${shareUrl} to learn more.\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
-        setIgCaption(defaultCaption);
-        setIgOpen(true);
-      } catch (err) {
-        console.error("Failed to capture showcase:", err);
-        toast({ title: "Capture Failed", description: "Could not capture the showcase image.", variant: "destructive" });
-      }
+    } catch (err) {
+      console.error("Failed to capture image:", err);
+      toast({ title: "Capture Failed", description: "Could not capture the image.", variant: "destructive" });
     }
   };
 
   const handlePostToInstagram = async () => {
     setIgPosting(true);
     try {
-      let body: any;
-      if (capturedImage && orgId) {
-        // Showcase mode — send captured image directly
-        body = { orgId, image: capturedImage, caption: igCaption };
-      } else if (dogId) {
-        // Single dog mode
-        body = { dogId, caption: igCaption };
-      } else {
+      if (!capturedImage || !orgId) {
         throw new Error("Nothing to post");
       }
+      // Always send the captured image — it's the full pawfile/showcase card
+      const body = { orgId, image: capturedImage, caption: igCaption };
       const res = await fetch("/api/instagram/post", {
         method: "POST",
         headers: {
