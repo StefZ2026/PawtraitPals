@@ -2414,8 +2414,8 @@ export async function registerRoutes(
 
   // Initiate Instagram OAuth flow via Instagram Direct Login (no config_id needed)
   app.get("/api/instagram/connect", isAuthenticated, async (req: Request, res: Response) => {
-    const appId = process.env.META_APP_ID;
-    if (!appId) return res.status(503).json({ error: "Instagram integration not configured (missing META_APP_ID)" });
+    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
+    if (!appId) return res.status(503).json({ error: "Instagram integration not configured (missing INSTAGRAM_APP_ID)" });
 
     const userId = (req as any).user.claims.sub;
     const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
@@ -2443,8 +2443,8 @@ export async function registerRoutes(
 
   // Instagram OAuth callback via Instagram Direct Login
   app.get("/api/instagram/callback", async (req: Request, res: Response) => {
-    const appId = process.env.META_APP_ID;
-    const appSecret = process.env.META_APP_SECRET;
+    const appId = process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID;
+    const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET;
     if (!appId || !appSecret) return res.status(503).send("Instagram integration not configured");
 
     const { code, state, error: igError, error_description, error_reason } = req.query;
