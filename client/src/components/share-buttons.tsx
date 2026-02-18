@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -28,9 +28,13 @@ interface ShareButtonsProps {
   dogName?: string;
   dogBreed?: string;
   orgId?: number;
+  /** Ref to a DOM element to capture as image for Instagram (used on showcase) */
+  captureRef?: RefObject<HTMLDivElement | null>;
+  /** Caption context for showcase posts (e.g. rescue name) */
+  showcaseName?: string;
 }
 
-export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId }: ShareButtonsProps) {
+export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId, captureRef, showcaseName }: ShareButtonsProps) {
   const { toast } = useToast();
   const { session, isAuthenticated } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -40,6 +44,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   const [sending, setSending] = useState(false);
   const [igPosting, setIgPosting] = useState(false);
   const [igCaption, setIgCaption] = useState("");
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const shareUrl = url || window.location.href;
   const encodedUrl = encodeURIComponent(shareUrl);
@@ -47,13 +52,16 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   const smsBody = `${text} ${shareUrl}`;
   const smsHref = `sms:?body=${encodeURIComponent(smsBody)}`;
 
+  // Show Instagram button when we have a dogId OR a captureRef (showcase)
+  const canPostIg = !!dogId || !!captureRef;
+
   // Check Instagram connection status
   const igStatusUrl = orgId
     ? `/api/instagram/status?orgId=${orgId}`
     : `/api/instagram/status`;
   const { data: igStatus } = useQuery<{ connected: boolean; username?: string; orgId?: number }>({
     queryKey: [igStatusUrl],
-    enabled: isAuthenticated && !!dogId,
+    enabled: isAuthenticated && canPostIg,
   });
 
   const handleCopyLink = async () => {
@@ -91,28 +99,60 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
     }
   };
 
-  const handleOpenIgPost = () => {
-    const defaultCaption = `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
-    setIgCaption(defaultCaption);
-    setIgOpen(true);
+  const handleIgButtonClick = async () => {
+    if (dogId) {
+      // Single dog page — go straight to caption editor
+      const defaultCaption = `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
+      setIgCaption(defaultCaption);
+      setCapturedImage(null);
+      setIgOpen(true);
+    } else if (captureRef?.current) {
+      // Showcase page — capture the collage as an image
+      try {
+        toast({ title: "Capturing showcase...", description: "Please wait." });
+        const { toPng } = await import("html-to-image");
+        const dataUrl = await toPng(captureRef.current, {
+          quality: 0.95,
+          pixelRatio: 2,
+          backgroundColor: "#ffffff",
+        });
+        setCapturedImage(dataUrl);
+        const defaultCaption = `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Visit ${shareUrl} to learn more.\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
+        setIgCaption(defaultCaption);
+        setIgOpen(true);
+      } catch (err) {
+        console.error("Failed to capture showcase:", err);
+        toast({ title: "Capture Failed", description: "Could not capture the showcase image.", variant: "destructive" });
+      }
+    }
   };
 
   const handlePostToInstagram = async () => {
-    if (!dogId) return;
     setIgPosting(true);
     try {
+      let body: any;
+      if (capturedImage && orgId) {
+        // Showcase mode — send captured image directly
+        body = { orgId, image: capturedImage, caption: igCaption };
+      } else if (dogId) {
+        // Single dog mode
+        body = { dogId, caption: igCaption };
+      } else {
+        throw new Error("Nothing to post");
+      }
       const res = await fetch("/api/instagram/post", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ dogId, caption: igCaption }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to post");
-      toast({ title: "Posted to Instagram!", description: `${dogName || 'Pet'}'s portrait is now on Instagram.` });
+      toast({ title: "Posted to Instagram!", description: capturedImage ? "Showcase posted to Instagram!" : `${dogName || 'Pet'}'s portrait is now on Instagram.` });
       setIgOpen(false);
+      setCapturedImage(null);
     } catch (err: any) {
       toast({ title: "Instagram Post Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -136,13 +176,13 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
           </TooltipTrigger>
           <TooltipContent>Share on Facebook</TooltipContent>
         </Tooltip>
-        {igStatus?.connected && dogId ? (
+        {igStatus?.connected && canPostIg ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size="icon"
                 variant="outline"
-                onClick={handleOpenIgPost}
+                onClick={handleIgButtonClick}
                 data-testid="button-share-instagram"
               >
                 <SiInstagram className="h-4 w-4" />
@@ -256,6 +296,11 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {capturedImage && (
+              <div className="rounded-md overflow-hidden border max-h-48">
+                <img src={capturedImage} alt="Showcase preview" className="w-full object-contain" />
+              </div>
+            )}
             <Textarea
               value={igCaption}
               onChange={(e) => setIgCaption(e.target.value)}

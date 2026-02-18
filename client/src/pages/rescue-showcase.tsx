@@ -12,7 +12,7 @@ import {
   PawPrint,
   Shield,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ShareButtons } from "@/components/share-buttons";
 import { AdminFloatingButton } from "@/components/admin-button";
@@ -46,6 +46,7 @@ export default function RescueShowcase() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const { isAdmin } = useAuth();
+  const showcaseRef = useRef<HTMLDivElement>(null);
 
   const { data: rescue, isLoading, error } = useQuery<RescueShowcaseData>({
     queryKey: ["/api/rescue", slug],
@@ -162,6 +163,7 @@ export default function RescueShowcase() {
 
         <div className="max-w-3xl mx-auto">
           <div
+            ref={showcaseRef}
             className="paw-border bg-white dark:bg-card overflow-visible shadow-lg print:shadow-none"
             data-testid="showcase-card"
           >
@@ -364,7 +366,7 @@ export default function RescueShowcase() {
           </div>
           <div className="mt-3 print:hidden">
             <p className="text-sm text-muted-foreground mb-2">Share this showcase:</p>
-            <ShareButtons title={shareTitle} text={shareText} />
+            <ShareButtons title={shareTitle} text={shareText} orgId={rescue.id} captureRef={showcaseRef} showcaseName={rescue.name} />
           </div>
         </div>
       </div>

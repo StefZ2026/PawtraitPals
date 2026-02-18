@@ -2535,21 +2535,52 @@ export async function registerRoutes(
       const userId = (req as any).user.claims.sub;
       const email = (req as any).user.claims.email;
       const isAdmin = email === ADMIN_EMAIL;
-      const { dogId, caption } = req.body;
+      const { dogId, caption, image, orgId: bodyOrgId } = req.body;
 
-      if (!dogId) return res.status(400).json({ error: "dogId is required" });
+      let imageToUpload: string;
+      let fileName: string;
+      let description: string;
+      let org: any;
+      let defaultCaption: string;
 
-      const dog = await storage.getDog(parseInt(dogId));
-      if (!dog) return res.status(404).json({ error: "Dog not found" });
-
-      const org = await storage.getOrganization(dog.organizationId);
-      if (!org) return res.status(404).json({ error: "Organization not found" });
-
-      if (!isAdmin) {
-        const userOrg = await storage.getOrganizationByOwner(userId);
-        if (!userOrg || userOrg.id !== org.id) {
-          return res.status(403).json({ error: "You don't have access to this organization" });
+      if (image && bodyOrgId) {
+        // Showcase mode: client sent a captured image + orgId
+        org = await storage.getOrganization(parseInt(bodyOrgId));
+        if (!org) return res.status(404).json({ error: "Organization not found" });
+        if (!isAdmin) {
+          const userOrg = await storage.getOrganizationByOwner(userId);
+          if (!userOrg || userOrg.id !== org.id) {
+            return res.status(403).json({ error: "You don't have access to this organization" });
+          }
         }
+        imageToUpload = image;
+        fileName = `showcase-${org.id}-${Date.now()}.png`;
+        description = `Showcase from ${org.name}`;
+        defaultCaption = caption || `Check out the adorable pets at ${org.name}! #adoptdontshop #rescuepets #pawtraitpals`;
+      } else if (dogId) {
+        // Single dog mode: post a specific dog's portrait
+        const dog = await storage.getDog(parseInt(dogId));
+        if (!dog) return res.status(404).json({ error: "Dog not found" });
+        org = await storage.getOrganization(dog.organizationId);
+        if (!org) return res.status(404).json({ error: "Organization not found" });
+        if (!isAdmin) {
+          const userOrg = await storage.getOrganizationByOwner(userId);
+          if (!userOrg || userOrg.id !== org.id) {
+            return res.status(403).json({ error: "You don't have access to this organization" });
+          }
+        }
+        const portrait = await storage.getSelectedPortraitByDog(dog.id);
+        if (!portrait || !portrait.generatedImageUrl) {
+          return res.status(400).json({ error: "No portrait found for this pet" });
+        }
+        imageToUpload = portrait.generatedImageUrl;
+        fileName = `portrait-${dog.id}-${Date.now()}.png`;
+        description = `Pawtrait of ${dog.name}`;
+        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
+        defaultCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
+      } else {
+        return res.status(400).json({ error: "dogId or image+orgId is required" });
       }
 
       // Get org's Ayrshare profile key
@@ -2559,21 +2590,15 @@ export async function registerRoutes(
       );
       const profileKey = result.rows[0]?.ayrshare_profile_key;
 
-      // Get the selected portrait
-      const portrait = await storage.getSelectedPortraitByDog(dog.id);
-      if (!portrait || !portrait.generatedImageUrl) {
-        return res.status(400).json({ error: "No portrait found for this pet" });
-      }
-
-      // Step 1: Upload portrait to Ayrshare (accepts base64 data URI directly)
-      console.log(`[instagram] Uploading portrait for dog ${dog.id} to Ayrshare`);
+      // Step 1: Upload image to Ayrshare
+      console.log(`[instagram] Uploading image for org ${org.id} to Ayrshare`);
       const uploadRes = await fetch(`${AYRSHARE_API_URL}/media/upload`, {
         method: 'POST',
         headers: getAyrshareHeaders(),
         body: JSON.stringify({
-          file: portrait.generatedImageUrl,
-          fileName: `portrait-${dog.id}-${Date.now()}.png`,
-          description: `Pawtrait of ${dog.name}`,
+          file: imageToUpload,
+          fileName,
+          description,
         }),
       });
       const uploadData = await uploadRes.json() as any;
@@ -2585,15 +2610,11 @@ export async function registerRoutes(
       console.log(`[instagram] Uploaded: ${uploadData.url}`);
 
       // Step 2: Post to Instagram via Ayrshare
-      const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-      const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
-      const postCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
-
       const postRes = await fetch(`${AYRSHARE_API_URL}/post`, {
         method: 'POST',
         headers: getAyrshareHeaders(profileKey),
         body: JSON.stringify({
-          post: postCaption,
+          post: defaultCaption,
           platforms: ['instagram'],
           mediaUrls: [uploadData.url],
         }),
@@ -2606,7 +2627,7 @@ export async function registerRoutes(
       }
 
       const igPost = postData.postIds?.find((p: any) => p.platform === 'instagram');
-      console.log(`[instagram] Posted dog ${dog.id} (${dog.name}) via Ayrshare`);
+      console.log(`[instagram] Posted to Instagram for org ${org.id} via Ayrshare`);
 
       res.json({
         success: true,
