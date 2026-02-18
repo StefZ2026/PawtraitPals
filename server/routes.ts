@@ -9,7 +9,7 @@ import { stripeService } from "./stripeService";
 import { getStripePublishableKey, getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal, getPriceId } from "./stripeClient";
 import rateLimit from "express-rate-limit";
 import Twilio from "twilio";
-import { containsInappropriateLanguage } from "./content-filter";
+import { containsInappropriateLanguage } from "@shared/content-filter";
 import { generateShowcaseMockup, generatePawfileMockup } from "./generate-mockups";
 import { isValidBreed } from "./breeds";
 import { isTrialExpired, isWithinTrialWindow, getFreeTrial, revertToFreeTrial, handleCancellation, canStartFreeTrial, markFreeTrialUsed } from "./subscription";

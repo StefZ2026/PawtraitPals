@@ -12,7 +12,7 @@ import { StyleSelector } from "@/components/style-selector";
 import { PortraitPreview } from "@/components/portrait-preview";
 import { BreedSelector } from "@/components/breed-selector";
 import { portraitStyles, type StyleOption } from "@/lib/portrait-styles";
-import { validatePetName } from "@/lib/content-filter";
+import { validatePetName } from "@shared/content-filter";
 import { ArrowLeft, Dog, Cat, Sparkles, Eye, AlertTriangle, Plus, Shield, Undo2 } from "lucide-react";
 import { PetLimitModal } from "@/components/pet-limit-modal";
 import { ThemeToggle } from "@/components/theme-toggle";
