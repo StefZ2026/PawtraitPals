@@ -2508,7 +2508,7 @@ export async function registerRoutes(
           privateKey: privateKey.replace(/\\n/g, '\n'),
           profileKey,
           redirect: `https://pawtrait-pals.onrender.com/settings?instagram=connected`,
-          allowedSocial: ['instagram', 'facebook'],
+          allowedSocial: ['instagram'],
         }),
       });
       const jwtData = await jwtRes.json() as any;

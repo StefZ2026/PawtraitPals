@@ -27,9 +27,10 @@ interface ShareButtonsProps {
   dogId?: number;
   dogName?: string;
   dogBreed?: string;
+  orgId?: number;
 }
 
-export function ShareButtons({ url, title, text, dogId, dogName, dogBreed }: ShareButtonsProps) {
+export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId }: ShareButtonsProps) {
   const { toast } = useToast();
   const { session, isAuthenticated } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -47,8 +48,11 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed }: Sha
   const smsHref = `sms:?body=${encodeURIComponent(smsBody)}`;
 
   // Check Instagram connection status
+  const igStatusUrl = orgId
+    ? `/api/instagram/status?orgId=${orgId}`
+    : `/api/instagram/status`;
   const { data: igStatus } = useQuery<{ connected: boolean; username?: string; orgId?: number }>({
-    queryKey: ["/api/instagram/status"],
+    queryKey: [igStatusUrl],
     enabled: isAuthenticated && !!dogId,
   });
 
