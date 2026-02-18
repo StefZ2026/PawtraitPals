@@ -2415,7 +2415,8 @@ export async function registerRoutes(
   // Initiate Instagram OAuth flow via Facebook Login for Business
   app.get("/api/instagram/connect", isAuthenticated, async (req: Request, res: Response) => {
     const appId = process.env.META_APP_ID;
-    if (!appId) return res.status(503).json({ error: "Instagram integration not configured" });
+    const configId = process.env.META_CONFIG_ID;
+    if (!appId || !configId) return res.status(503).json({ error: "Instagram integration not configured (missing META_APP_ID or META_CONFIG_ID)" });
 
     const userId = (req as any).user.claims.sub;
     const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
@@ -2433,9 +2434,10 @@ export async function registerRoutes(
 
     const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
-    const scopes = 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement';
 
-    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code&state=${state}`;
+    // Facebook Login for Business requires config_id (not scope in URL)
+    // Permissions are configured in Meta Developer Console under Facebook Login for Business > Configurations
+    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&response_type=code&state=${state}`;
 
     res.redirect(authUrl);
   });
