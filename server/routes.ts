@@ -2464,7 +2464,7 @@ export async function registerRoutes(
     const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
 
     try {
-      // Step 1: Exchange code for Facebook user access token
+      // Step 1: Exchange code for short-lived Facebook user access token
       console.log(`[instagram] Exchanging code for Facebook token via graph.facebook.com`);
       const tokenRes = await fetch(
         `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${encodeURIComponent(code as string)}`
@@ -2474,10 +2474,24 @@ export async function registerRoutes(
         console.error("[instagram] Facebook token exchange failed:", tokenData);
         throw new Error(tokenData.error?.message || "Facebook token exchange failed");
       }
-      const userToken = tokenData.access_token;
-      console.log(`[instagram] Got Facebook user access token`);
+      const shortLivedToken = tokenData.access_token;
+      console.log(`[instagram] Got short-lived Facebook user access token`);
 
-      // Step 2: Get user's Facebook Pages (page tokens are already long-lived)
+      // Step 2: Exchange short-lived token for long-lived token (~60 days)
+      // This is REQUIRED — without this, page tokens from /me/accounts expire in ~1 hour
+      console.log(`[instagram] Exchanging for long-lived token`);
+      const longLivedRes = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`
+      );
+      const longLivedData = await longLivedRes.json() as any;
+      if (!longLivedData.access_token) {
+        console.error("[instagram] Long-lived token exchange failed:", longLivedData);
+        throw new Error(longLivedData.error?.message || "Long-lived token exchange failed");
+      }
+      const userToken = longLivedData.access_token;
+      console.log(`[instagram] Got long-lived user token (expires_in: ${longLivedData.expires_in || 'never'})`);
+
+      // Step 3: Get user's Facebook Pages (page tokens from long-lived user token are non-expiring)
       const pagesRes = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&access_token=${userToken}`
       );
@@ -2487,7 +2501,7 @@ export async function registerRoutes(
       }
       console.log(`[instagram] Found ${pagesData.data.length} Facebook Page(s)`);
 
-      // Step 3: Find the first page with an Instagram Business Account
+      // Step 4: Find the first page with an Instagram Business Account
       let igAccountId: string | null = null;
       let pageAccessToken: string | null = null;
       let pageId: string | null = null;
@@ -2518,8 +2532,9 @@ export async function registerRoutes(
         throw new Error("No Instagram Business account found linked to your Facebook Pages. Make sure your Instagram account is a Business or Creator account connected to a Facebook Page.");
       }
 
-      // Page access tokens from /me/accounts are long-lived (~60 days)
-      const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+      // Page tokens from /me/accounts (when using a long-lived user token) are non-expiring
+      // Set a far-future expiry as a safety marker
+      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
       await pool.query(
         `UPDATE organizations SET
           instagram_access_token = $1,
