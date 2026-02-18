@@ -2375,6 +2375,16 @@ export async function registerRoutes(
           ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP
       `);
       console.log("[instagram] DB columns ready");
+      // Create debug log table for OAuth troubleshooting
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS instagram_debug_log (
+          id SERIAL PRIMARY KEY,
+          attempt_label TEXT,
+          redirect_uri_sent TEXT,
+          response_body TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
     } catch (e: any) {
       console.warn("[instagram] Could not add columns:", e.message);
     }
@@ -2435,8 +2445,9 @@ export async function registerRoutes(
     const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
 
     // Instagram Direct Login — uses scope parameter, no config_id needed
+    // NOTE: Do NOT encodeURIComponent the redirect_uri or scope — Instagram expects them unencoded
     const scopes = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages';
-    const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`;
+    const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
 
     res.redirect(authUrl);
   });
@@ -2463,26 +2474,58 @@ export async function registerRoutes(
     const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
 
     try {
-      // Step 1: Exchange code for short-lived Instagram token (POST with form body)
-      console.log(`[instagram] Exchanging code for Instagram token via api.instagram.com`);
-      const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: appId,
-          client_secret: appSecret,
-          grant_type: 'authorization_code',
-          redirect_uri: redirectUri,
-          code: code as string,
-        }).toString(),
-      });
-      const tokenData = await tokenRes.json() as any;
-      if (!tokenData.access_token) {
-        console.error("[instagram] Token exchange failed:", tokenData);
-        throw new Error(tokenData.error_message || tokenData.error?.message || "Instagram token exchange failed");
+      // Helper: attempt token exchange with given redirect_uri
+      async function tryTokenExchange(uri: string, label: string): Promise<{ access_token: string; user_id: string } | null> {
+        console.log(`[instagram] Token exchange attempt (${label}) redirect_uri=${uri}`);
+        const res = await fetch('https://api.instagram.com/oauth/access_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: appId!,
+            client_secret: appSecret!,
+            grant_type: 'authorization_code',
+            redirect_uri: uri,
+            code: code as string,
+          }).toString(),
+        });
+        const data = await res.json() as any;
+        if (data.access_token) return data;
+        console.error(`[instagram] Token exchange failed (${label}):`, JSON.stringify(data));
+        // Store debug info in database for admin visibility
+        try {
+          await pool.query(
+            `INSERT INTO instagram_debug_log (attempt_label, redirect_uri_sent, response_body, created_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT DO NOTHING`,
+            [label, uri, JSON.stringify(data)]
+          );
+        } catch (logErr) {
+          // Debug table may not exist yet, that's OK
+          console.error('[instagram] Could not write debug log:', (logErr as any).message);
+        }
+        return null;
       }
-      const shortLivedToken = tokenData.access_token;
-      const igUserId = String(tokenData.user_id);
+
+      // Step 1: Exchange code for short-lived Instagram token
+      // Try with hardcoded redirect_uri first (should match auth URL)
+      let tokenResult = await tryTokenExchange(redirectUri, 'hardcoded');
+
+      // If that fails, try with the actual URL this callback was accessed on (in case proxy rewrites)
+      if (!tokenResult) {
+        const actualProto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const actualHost = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string);
+        const actualUri = `${actualProto}://${actualHost}${req.path}`;
+        if (actualUri !== redirectUri) {
+          tokenResult = await tryTokenExchange(actualUri, 'actual-url');
+        }
+      }
+
+      if (!tokenResult) {
+        throw new Error("Instagram token exchange failed — see /api/admin/instagram-debug for details");
+      }
+
+      const shortLivedToken = tokenResult.access_token;
+      const igUserId = String(tokenResult.user_id);
       console.log(`[instagram] Got short-lived token for IG user ${igUserId}`);
 
       // Step 2: Exchange for long-lived token (~60 days, refreshable)
@@ -2660,6 +2703,20 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[instagram] Disconnect error:", error);
       res.status(500).json({ error: "Failed to disconnect Instagram" });
+    }
+  });
+
+  // Admin endpoint: view Instagram OAuth debug logs
+  app.get("/api/admin/instagram-debug", isAuthenticated, async (req: Request, res: Response) => {
+    const email = (req as any).user.claims.email;
+    if (email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+    try {
+      const result = await pool.query(
+        `SELECT * FROM instagram_debug_log ORDER BY created_at DESC LIMIT 10`
+      );
+      res.json(result.rows);
+    } catch (e: any) {
+      res.json({ error: e.message, note: "Debug table may not exist yet" });
     }
   });
 
