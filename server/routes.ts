@@ -2361,37 +2361,43 @@ export async function registerRoutes(
     }
   });
 
-  // --- Instagram Integration ---
+  // --- Instagram Integration via Ayrshare ---
+  const AYRSHARE_API_URL = 'https://api.ayrshare.com/api';
 
-  // Ensure Instagram columns exist on organizations table
+  function getAyrshareHeaders(profileKey?: string | null): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${process.env.AYRSHARE_API_KEY}`,
+      'Content-Type': 'application/json',
+    };
+    if (profileKey) {
+      headers['Profile-Key'] = profileKey;
+    }
+    return headers;
+  }
+
+  // Ensure DB columns exist for Ayrshare integration
   (async () => {
     try {
       await pool.query(`
         ALTER TABLE organizations
+          ADD COLUMN IF NOT EXISTS ayrshare_profile_key TEXT,
           ADD COLUMN IF NOT EXISTS instagram_access_token TEXT,
           ADD COLUMN IF NOT EXISTS instagram_user_id TEXT,
           ADD COLUMN IF NOT EXISTS instagram_username TEXT,
           ADD COLUMN IF NOT EXISTS instagram_page_id TEXT,
           ADD COLUMN IF NOT EXISTS instagram_token_expires_at TIMESTAMP
       `);
-      console.log("[instagram] DB columns ready");
-      // Create debug log table for OAuth troubleshooting
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS instagram_debug_log (
-          id SERIAL PRIMARY KEY,
-          attempt_label TEXT,
-          redirect_uri_sent TEXT,
-          response_body TEXT,
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
+      console.log("[instagram] DB columns ready (Ayrshare mode)");
     } catch (e: any) {
       console.warn("[instagram] Could not add columns:", e.message);
     }
   })();
 
-  // Check Instagram connection status for an org
+  // Check Instagram connection status via Ayrshare
   app.get("/api/instagram/status", isAuthenticated, async (req: Request, res: Response) => {
+    const apiKey = process.env.AYRSHARE_API_KEY;
+    if (!apiKey) return res.json({ connected: false });
+
     try {
       const userId = (req as any).user.claims.sub;
       const email = (req as any).user.claims.email;
@@ -2407,154 +2413,125 @@ export async function registerRoutes(
       if (!org) return res.json({ connected: false });
 
       const result = await pool.query(
-        'SELECT instagram_user_id, instagram_username FROM organizations WHERE id = $1',
+        'SELECT ayrshare_profile_key, instagram_username FROM organizations WHERE id = $1',
         [org.id]
       );
-      const row = result.rows[0];
-      if (row?.instagram_user_id) {
-        res.json({ connected: true, username: row.instagram_username || null, orgId: org.id });
-      } else {
-        res.json({ connected: false, orgId: org.id });
+      const profileKey = result.rows[0]?.ayrshare_profile_key;
+
+      // Query Ayrshare for connected social accounts
+      const userRes = await fetch(`${AYRSHARE_API_URL}/user`, {
+        headers: getAyrshareHeaders(profileKey),
+      });
+      const userData = await userRes.json() as any;
+
+      const connected = Array.isArray(userData.activeSocialAccounts) &&
+        userData.activeSocialAccounts.includes('instagram');
+      const username = userData.displayNames?.instagram ||
+        result.rows[0]?.instagram_username || null;
+
+      if (connected && username && username !== result.rows[0]?.instagram_username) {
+        await pool.query('UPDATE organizations SET instagram_username = $1 WHERE id = $2', [username, org.id]);
       }
+
+      res.json({ connected, username, orgId: org.id });
     } catch (error) {
       console.error("[instagram] Status error:", error);
       res.json({ connected: false });
     }
   });
 
-  // Initiate Instagram OAuth via Facebook Login (redirect_uri is registered under Facebook Login settings)
+  // Connect Instagram via Ayrshare Social Connect (JWT SSO)
   app.get("/api/instagram/connect", isAuthenticated, async (req: Request, res: Response) => {
-    const appId = process.env.META_APP_ID;
-    if (!appId) return res.status(503).json({ error: "Instagram integration not configured (missing META_APP_ID)" });
-
-    const userId = (req as any).user.claims.sub;
-    const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
-    const email = (req as any).user.claims.email;
-    const isAdmin = email === ADMIN_EMAIL;
-
-    let orgId: number | null = null;
-    if (isAdmin && orgIdParam) {
-      orgId = orgIdParam;
-    } else {
-      const org = await storage.getOrganizationByOwner(userId);
-      if (org) orgId = org.id;
-    }
-    if (!orgId) return res.status(400).json({ error: "No organization found" });
-
-    const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
-    const state = Buffer.from(JSON.stringify({ orgId, userId })).toString('base64url');
-
-    // Facebook Login with new Instagram Business API permissions
-    const scopes = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages';
-    const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`;
-
-    res.redirect(authUrl);
-  });
-
-  // Instagram OAuth callback via Facebook Login
-  app.get("/api/instagram/callback", async (req: Request, res: Response) => {
-    const appId = process.env.META_APP_ID;
-    const appSecret = process.env.META_APP_SECRET;
-    if (!appId || !appSecret) return res.status(503).send("Instagram integration not configured");
-
-    const { code, state, error: fbError, error_description, error_reason } = req.query;
-    if (fbError || !code || !state) {
-      console.error("[instagram] OAuth error or missing params:", { fbError, error_description, error_reason, hasCode: !!code, hasState: !!state });
-      return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(String(error_description || fbError || 'missing_params')));
-    }
-
-    let stateData: { orgId: number; userId: string };
-    try {
-      stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
-    } catch {
-      return res.redirect('/settings?instagram=error&detail=invalid_state');
-    }
-
-    const redirectUri = `https://pawtrait-pals.onrender.com/api/instagram/callback`;
+    const apiKey = process.env.AYRSHARE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: "Instagram integration not configured" });
 
     try {
-      // Step 1: Exchange code for Facebook User Access Token
-      console.log(`[instagram] Exchanging code for Facebook token via graph.facebook.com`);
-      const tokenRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${encodeURIComponent(code as string)}`
+      const userId = (req as any).user.claims.sub;
+      const email = (req as any).user.claims.email;
+      const isAdmin = email === ADMIN_EMAIL;
+      const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
+
+      let orgId: number | null = null;
+      if (isAdmin && orgIdParam) {
+        orgId = orgIdParam;
+      } else {
+        const org = await storage.getOrganizationByOwner(userId);
+        if (org) orgId = org.id;
+      }
+      if (!orgId) return res.status(400).json({ error: "No organization found" });
+
+      // Create Ayrshare profile for this org if it doesn't exist
+      const result = await pool.query(
+        'SELECT ayrshare_profile_key FROM organizations WHERE id = $1',
+        [orgId]
       );
-      const tokenData = await tokenRes.json() as any;
-      if (!tokenData.access_token) {
-        console.error("[instagram] Facebook token exchange failed:", tokenData);
-        // Store debug info
-        try {
+      let profileKey = result.rows[0]?.ayrshare_profile_key;
+
+      if (!profileKey) {
+        const org = await storage.getOrganization(orgId);
+        const profileRes = await fetch(`${AYRSHARE_API_URL}/profiles`, {
+          method: 'POST',
+          headers: getAyrshareHeaders(),
+          body: JSON.stringify({
+            title: `PP-Org-${orgId}-${(org?.name || 'Unknown').replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 30)}`,
+          }),
+        });
+        const profileData = await profileRes.json() as any;
+
+        if (profileData.profileKey) {
+          profileKey = profileData.profileKey;
           await pool.query(
-            `INSERT INTO instagram_debug_log (attempt_label, redirect_uri_sent, response_body, created_at)
-             VALUES ($1, $2, $3, NOW())`,
-            ['fb-token-exchange', redirectUri, JSON.stringify(tokenData)]
+            'UPDATE organizations SET ayrshare_profile_key = $1 WHERE id = $2',
+            [profileKey, orgId]
           );
-        } catch (logErr) { /* debug table may not exist */ }
-        throw new Error(tokenData.error?.message || "Facebook token exchange failed");
+          console.log(`[instagram] Created Ayrshare profile for org ${orgId}: ${profileKey}`);
+        } else {
+          console.error("[instagram] Failed to create Ayrshare profile:", profileData);
+          return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(profileData.message || 'profile_creation_failed'));
+        }
       }
-      const shortToken = tokenData.access_token;
-      console.log(`[instagram] Got short-lived Facebook token`);
 
-      // Step 2: Exchange for long-lived token (~60 days)
-      console.log(`[instagram] Exchanging for long-lived Facebook token`);
-      const longRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortToken}`
-      );
-      const longData = await longRes.json() as any;
-      const longToken = longData.access_token || shortToken;
-      const expiresIn = longData.expires_in || 5184000;
-      console.log(`[instagram] Got long-lived token (expires_in: ${expiresIn}s)`);
+      // Generate JWT URL for Ayrshare Social Connect page
+      const privateKey = process.env.AYRSHARE_PRIVATE_KEY;
+      const domain = process.env.AYRSHARE_DOMAIN;
 
-      // Step 3: Get Instagram account info via Instagram Business API
-      console.log(`[instagram] Looking up Instagram account via /me endpoint`);
-      const meRes = await fetch(
-        `https://graph.facebook.com/v21.0/me?fields=user_id,username,name&access_token=${longToken}`
-      );
-      const meData = await meRes.json() as any;
-      console.log(`[instagram] /me response:`, JSON.stringify(meData));
-
-      // Store debug info
-      try {
-        await pool.query(
-          `INSERT INTO instagram_debug_log (attempt_label, redirect_uri_sent, response_body, created_at)
-           VALUES ($1, $2, $3, NOW())`,
-          ['ig-me-lookup', 'n/a', JSON.stringify(meData)]
-        );
-      } catch (logErr) { /* debug table may not exist */ }
-
-      // The /me endpoint with instagram_business_basic returns the IG user
-      const igUserId = meData.user_id || meData.id;
-      const igUsername = meData.username || null;
-      const pageId: string | null = null;
-
-      if (!igUserId) {
-        throw new Error("Could not retrieve Instagram account. Make sure your Instagram is a Professional (Business or Creator) account.");
+      if (!privateKey || !domain) {
+        console.error("[instagram] Missing AYRSHARE_PRIVATE_KEY or AYRSHARE_DOMAIN env vars");
+        return res.redirect('/settings?instagram=error&detail=missing_ayrshare_config');
       }
-      console.log(`[instagram] Found IG account ${igUserId} (@${igUsername})`);
 
+      const jwtRes = await fetch(`${AYRSHARE_API_URL}/profiles/generateJWT`, {
+        method: 'POST',
+        headers: getAyrshareHeaders(),
+        body: JSON.stringify({
+          domain,
+          privateKey: privateKey.replace(/\\n/g, '\n'),
+          profileKey,
+          redirect: `https://pawtrait-pals.onrender.com/settings?instagram=connected`,
+          allowedSocial: ['instagram', 'facebook'],
+          expiresIn: 30,
+        }),
+      });
+      const jwtData = await jwtRes.json() as any;
 
-      // Step 4: Store credentials
-      const expiresAt = new Date(Date.now() + expiresIn * 1000);
-      await pool.query(
-        `UPDATE organizations SET
-          instagram_access_token = $1,
-          instagram_user_id = $2,
-          instagram_username = $3,
-          instagram_page_id = $4,
-          instagram_token_expires_at = $5
-        WHERE id = $6`,
-        [longToken, igUserId, igUsername, pageId, expiresAt, stateData.orgId]
-      );
-
-      console.log(`[instagram] Connected @${igUsername} (${igUserId}) to org ${stateData.orgId}`);
-      res.redirect(`/settings?instagram=connected&username=${igUsername || ''}`);
+      if (jwtData.url) {
+        console.log(`[instagram] Redirecting org ${orgId} to Ayrshare Social Connect`);
+        return res.redirect(jwtData.url);
+      } else {
+        console.error("[instagram] JWT generation failed:", jwtData);
+        return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(jwtData.message || 'jwt_failed'));
+      }
     } catch (error: any) {
-      console.error("[instagram] OAuth callback error:", error);
+      console.error("[instagram] Connect error:", error);
       res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(error.message || 'unknown'));
     }
   });
 
-  // Post to Instagram
+  // Post to Instagram via Ayrshare
   app.post("/api/instagram/post", isAuthenticated, async (req: Request, res: Response) => {
+    const apiKey = process.env.AYRSHARE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: "Instagram integration not configured" });
+
     try {
       const userId = (req as any).user.claims.sub;
       const email = (req as any).user.claims.email;
@@ -2566,7 +2543,6 @@ export async function registerRoutes(
       const dog = await storage.getDog(parseInt(dogId));
       if (!dog) return res.status(404).json({ error: "Dog not found" });
 
-      // Get the org and verify ownership
       const org = await storage.getOrganization(dog.organizationId);
       if (!org) return res.status(404).json({ error: "Organization not found" });
 
@@ -2577,85 +2553,78 @@ export async function registerRoutes(
         }
       }
 
-      // Get Instagram credentials
+      // Get org's Ayrshare profile key
       const result = await pool.query(
-        'SELECT instagram_access_token, instagram_user_id, instagram_token_expires_at FROM organizations WHERE id = $1',
+        'SELECT ayrshare_profile_key FROM organizations WHERE id = $1',
         [org.id]
       );
-      const row = result.rows[0];
-      if (!row?.instagram_access_token || !row?.instagram_user_id) {
-        return res.status(400).json({ error: "Instagram not connected. Connect Instagram in Settings first." });
-      }
+      const profileKey = result.rows[0]?.ayrshare_profile_key;
 
-      // Check token expiry
-      if (row.instagram_token_expires_at && new Date(row.instagram_token_expires_at) < new Date()) {
-        return res.status(400).json({ error: "Instagram token expired. Please reconnect in Settings." });
-      }
-
-      // Get the selected portrait for this dog
+      // Get the selected portrait
       const portrait = await storage.getSelectedPortraitByDog(dog.id);
       if (!portrait || !portrait.generatedImageUrl) {
         return res.status(400).json({ error: "No portrait found for this pet" });
       }
 
-      // Build public image URL
+      // Step 1: Upload portrait to Ayrshare (accepts base64 data URI directly)
+      console.log(`[instagram] Uploading portrait for dog ${dog.id} to Ayrshare`);
+      const uploadRes = await fetch(`${AYRSHARE_API_URL}/media/upload`, {
+        method: 'POST',
+        headers: getAyrshareHeaders(),
+        body: JSON.stringify({
+          file: portrait.generatedImageUrl,
+          fileName: `portrait-${dog.id}-${Date.now()}.png`,
+          description: `Pawtrait of ${dog.name}`,
+        }),
+      });
+      const uploadData = await uploadRes.json() as any;
+
+      if (!uploadData.url) {
+        console.error("[instagram] Upload failed:", uploadData);
+        throw new Error(uploadData.message || "Failed to upload image");
+      }
+      console.log(`[instagram] Uploaded: ${uploadData.url}`);
+
+      // Step 2: Post to Instagram via Ayrshare
       const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
       const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
-      const imageUrl = `${proto}://${host}/api/portraits/${portrait.id}/image`;
-
       const postCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
 
-      // Step 1: Create media container
-      const containerParams = new URLSearchParams({
-        image_url: imageUrl,
-        caption: postCaption,
-        access_token: row.instagram_access_token,
+      const postRes = await fetch(`${AYRSHARE_API_URL}/post`, {
+        method: 'POST',
+        headers: getAyrshareHeaders(profileKey),
+        body: JSON.stringify({
+          post: postCaption,
+          platforms: ['instagram'],
+          mediaUrls: [uploadData.url],
+        }),
       });
-      const containerRes = await fetch(
-        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: containerParams.toString(),
-        }
-      );
-      const containerData = await containerRes.json() as any;
-      if (containerData.error) {
-        console.error("[instagram] Container creation error:", containerData.error);
-        throw new Error(containerData.error.message || "Failed to create Instagram post");
+      const postData = await postRes.json() as any;
+
+      if (postData.status === 'error') {
+        console.error("[instagram] Post failed:", postData);
+        throw new Error(postData.message || "Failed to post to Instagram");
       }
 
-      const containerId = containerData.id;
+      const igPost = postData.postIds?.find((p: any) => p.platform === 'instagram');
+      console.log(`[instagram] Posted dog ${dog.id} (${dog.name}) via Ayrshare`);
 
-      // Step 2: Publish
-      const publishParams = new URLSearchParams({
-        creation_id: containerId,
-        access_token: row.instagram_access_token,
+      res.json({
+        success: true,
+        mediaId: igPost?.id || postData.id,
+        postUrl: igPost?.postUrl || null,
       });
-      const publishRes = await fetch(
-        `https://graph.facebook.com/v21.0/${row.instagram_user_id}/media_publish`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: publishParams.toString(),
-        }
-      );
-      const publishData = await publishRes.json() as any;
-      if (publishData.error) {
-        console.error("[instagram] Publish error:", publishData.error);
-        throw new Error(publishData.error.message || "Failed to publish Instagram post");
-      }
-
-      console.log(`[instagram] Posted dog ${dog.id} (${dog.name}) to Instagram, media ID: ${publishData.id}`);
-      res.json({ success: true, mediaId: publishData.id });
     } catch (error: any) {
       console.error("[instagram] Post error:", error);
       res.status(500).json({ error: error.message || "Failed to post to Instagram" });
     }
   });
 
-  // Disconnect Instagram
+  // Disconnect Instagram via Ayrshare
   app.delete("/api/instagram/disconnect", isAuthenticated, async (req: Request, res: Response) => {
+    const apiKey = process.env.AYRSHARE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: "Instagram integration not configured" });
+
     try {
       const userId = (req as any).user.claims.sub;
       const email = (req as any).user.claims.email;
@@ -2670,14 +2639,22 @@ export async function registerRoutes(
       }
       if (!org) return res.status(404).json({ error: "Organization not found" });
 
+      const result = await pool.query(
+        'SELECT ayrshare_profile_key FROM organizations WHERE id = $1',
+        [org.id]
+      );
+      const profileKey = result.rows[0]?.ayrshare_profile_key;
+
+      if (profileKey) {
+        await fetch(`${AYRSHARE_API_URL}/profiles/social`, {
+          method: 'DELETE',
+          headers: getAyrshareHeaders(profileKey),
+          body: JSON.stringify({ platform: 'instagram' }),
+        });
+      }
+
       await pool.query(
-        `UPDATE organizations SET
-          instagram_access_token = NULL,
-          instagram_user_id = NULL,
-          instagram_username = NULL,
-          instagram_page_id = NULL,
-          instagram_token_expires_at = NULL
-        WHERE id = $1`,
+        `UPDATE organizations SET instagram_username = NULL, instagram_user_id = NULL, instagram_access_token = NULL WHERE id = $1`,
         [org.id]
       );
 
@@ -2688,17 +2665,36 @@ export async function registerRoutes(
     }
   });
 
-  // Admin endpoint: view Instagram OAuth debug logs
+  // Admin debug: Ayrshare integration status
   app.get("/api/admin/instagram-debug", isAuthenticated, async (req: Request, res: Response) => {
     const email = (req as any).user.claims.email;
     if (email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+
+    const apiKey = process.env.AYRSHARE_API_KEY;
+    if (!apiKey) return res.json({ error: "AYRSHARE_API_KEY not set" });
+
     try {
-      const result = await pool.query(
-        `SELECT * FROM instagram_debug_log ORDER BY created_at DESC LIMIT 10`
-      );
-      res.json(result.rows);
+      const userRes = await fetch(`${AYRSHARE_API_URL}/user`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      const userData = await userRes.json();
+
+      const profilesRes = await fetch(`${AYRSHARE_API_URL}/profiles`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      const profilesData = await profilesRes.json();
+
+      res.json({
+        ayrshare_user: userData,
+        profiles: profilesData,
+        env: {
+          hasApiKey: !!apiKey,
+          hasDomain: !!process.env.AYRSHARE_DOMAIN,
+          hasPrivateKey: !!process.env.AYRSHARE_PRIVATE_KEY,
+        },
+      });
     } catch (e: any) {
-      res.json({ error: e.message, note: "Debug table may not exist yet" });
+      res.json({ error: e.message });
     }
   });
 
