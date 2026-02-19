@@ -3032,6 +3032,7 @@ export async function registerRoutes(
       console.log(`[instagram-native] Posting for org ${org.id}, image URL: ${imageUrl}`);
 
       // Step 1: Create media container
+      console.log(`[instagram-native] Creating container: user=${igUserId}, image_url=${imageUrl}`);
       const containerRes = await fetch(`${GRAPH_API_V}/${igUserId}/media`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3041,10 +3042,12 @@ export async function registerRoutes(
           access_token: token,
         }),
       });
-      const containerData = await containerRes.json() as any;
+      const containerText = await containerRes.text();
+      console.log(`[instagram-native] Container response (${containerRes.status}): ${containerText}`);
+      const containerData = JSON.parse(containerText);
 
       if (containerData.error) {
-        console.error("[instagram-native] Container creation error:", containerData.error);
+        console.error("[instagram-native] Container creation error:", JSON.stringify(containerData.error));
         throw new Error(containerData.error.message || "Failed to create media container");
       }
       const containerId = containerData.id;
@@ -3071,6 +3074,7 @@ export async function registerRoutes(
       }
 
       // Step 3: Publish
+      console.log(`[instagram-native] Publishing container ${containerId} for user ${igUserId}`);
       const publishRes = await fetch(`${GRAPH_API_V}/${igUserId}/media_publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3079,10 +3083,12 @@ export async function registerRoutes(
           access_token: token,
         }),
       });
-      const publishData = await publishRes.json() as any;
+      const publishText = await publishRes.text();
+      console.log(`[instagram-native] Publish response (${publishRes.status}): ${publishText}`);
+      const publishData = JSON.parse(publishText);
 
       if (publishData.error) {
-        console.error("[instagram-native] Publish error:", publishData.error);
+        console.error("[instagram-native] Publish error:", JSON.stringify(publishData.error));
         throw new Error(publishData.error.message || "Failed to publish to Instagram");
       }
 
