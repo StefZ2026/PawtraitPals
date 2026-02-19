@@ -2731,8 +2731,8 @@ export async function registerRoutes(
 
   const GRAPH_API = 'https://graph.instagram.com';
   const GRAPH_API_V = 'https://graph.instagram.com/v21.0';
-  const IG_APP_ID = process.env.META_APP_ID;  // 1594575465084269 — the working "Pawtrait Pals" Meta app
-  const IG_APP_SECRET = process.env.META_APP_SECRET;
+  const IG_APP_ID = process.env.INSTAGRAM_APP_ID;  // 1402830604303230 — Instagram App ID (from Meta portal Instagram API config)
+  const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET;
 
   // In-memory image cache for serving base64 images as public URLs
   const imageCache = new Map<string, { data: Buffer; contentType: string; expiresAt: number }>();
