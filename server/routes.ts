@@ -2906,6 +2906,9 @@ export async function registerRoutes(
       const redirectUri = `${process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000'}/api/instagram-native/callback`;
 
       // Step 1: Exchange code for short-lived token (Instagram Platform API)
+      // Clean code value (Instagram sometimes appends #_ to the code)
+      const cleanCode = (code as string).replace(/#_$/, '');
+      console.log(`[instagram-native] Token exchange: client_id=${IG_APP_ID}, redirect_uri=${redirectUri}, code_length=${cleanCode.length}`);
       const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -2914,12 +2917,14 @@ export async function registerRoutes(
           client_secret: IG_APP_SECRET!,
           grant_type: 'authorization_code',
           redirect_uri: redirectUri,
-          code: code as string,
+          code: cleanCode,
         }).toString(),
       });
       const tokenData = await tokenRes.json() as any;
       if (tokenData.error_type || tokenData.error) {
-        console.error("[instagram-native] Token exchange error:", tokenData);
+        console.error("[instagram-native] Token exchange error:", JSON.stringify(tokenData));
+        console.error("[instagram-native] Used redirect_uri:", redirectUri);
+        console.error("[instagram-native] Used client_id:", IG_APP_ID);
         throw new Error(tokenData.error_message || tokenData.error?.message || "Token exchange failed");
       }
       const shortLivedToken = tokenData.access_token;
