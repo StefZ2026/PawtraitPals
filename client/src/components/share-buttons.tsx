@@ -12,6 +12,8 @@ import { FaXTwitter } from "react-icons/fa6";
 import { NextdoorIcon } from "@/components/nextdoor-icon";
 import { useAuth } from "@/hooks/use-auth";
 
+const IG_PREFIX = import.meta.env.VITE_INSTAGRAM_PROVIDER === 'native' ? '/api/instagram-native' : '/api/instagram';
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -57,8 +59,8 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
 
   // Check Instagram connection status
   const igStatusUrl = orgId
-    ? `/api/instagram/status?orgId=${orgId}`
-    : `/api/instagram/status`;
+    ? `${IG_PREFIX}/status?orgId=${orgId}`
+    : `${IG_PREFIX}/status`;
   const { data: igStatus } = useQuery<{ connected: boolean; username?: string; orgId?: number }>({
     queryKey: [igStatusUrl],
     enabled: isAuthenticated && canPostIg,
@@ -130,7 +132,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
       }
       // Always send the captured image — it's the full pawfile/showcase card
       const body = { orgId, image: capturedImage, caption: igCaption };
-      const res = await fetch("/api/instagram/post", {
+      const res = await fetch(`${IG_PREFIX}/post`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

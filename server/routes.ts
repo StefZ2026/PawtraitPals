@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
+import crypto from "crypto";
 import { storage } from "./storage";
 import type { InsertOrganization } from "@shared/schema";
 import { z } from "zod";
@@ -2720,6 +2721,500 @@ export async function registerRoutes(
       });
     } catch (e: any) {
       res.json({ error: e.message });
+    }
+  });
+
+  // ============================================================
+  // --- Native Instagram Graph API Integration ---
+  // Runs alongside Ayrshare; controlled by VITE_INSTAGRAM_PROVIDER env var on frontend
+  // ============================================================
+
+  const GRAPH_API = 'https://graph.facebook.com/v21.0';
+  const IG_APP_ID = process.env.META_APP_ID;  // 1594575465084269 — the working "Pawtrait Pals" Meta app
+  const IG_APP_SECRET = process.env.META_APP_SECRET;
+
+  // In-memory image cache for serving base64 images as public URLs
+  const imageCache = new Map<string, { data: Buffer; contentType: string; expiresAt: number }>();
+
+  // Clean expired images every 2 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [token, entry] of imageCache) {
+      if (now > entry.expiresAt) {
+        imageCache.delete(token);
+      }
+    }
+  }, 2 * 60 * 1000);
+
+  // Public image endpoint — serves cached images by token (no auth required)
+  app.get("/api/public-image/:token", (req: Request, res: Response) => {
+    const entry = imageCache.get(req.params.token);
+    if (!entry || Date.now() > entry.expiresAt) {
+      imageCache.delete(req.params.token);
+      return res.status(404).json({ error: "Image not found or expired" });
+    }
+    res.set('Content-Type', entry.contentType);
+    res.set('Cache-Control', 'public, max-age=600');
+    res.send(entry.data);
+  });
+
+  // Helper: store base64 image and return a public URL
+  function storePublicImage(base64DataUri: string): string {
+    const matches = base64DataUri.match(/^data:(image\/\w+);base64,(.+)$/s);
+    if (!matches) throw new Error("Invalid base64 image data");
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    const token = crypto.randomUUID();
+    imageCache.set(token, {
+      data: buffer,
+      contentType,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 min TTL
+    });
+    const host = process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000';
+    return `${host}/api/public-image/${token}`;
+  }
+
+  // Helper: get org for current user (owner or admin)
+  async function getOrgForUser(req: Request, orgIdParam?: number | null): Promise<any> {
+    const userId = (req as any).user.claims.sub;
+    const email = (req as any).user.claims.email;
+    const isAdmin = email === ADMIN_EMAIL;
+    if (isAdmin && orgIdParam) {
+      return storage.getOrganization(orgIdParam);
+    }
+    return storage.getOrganizationByOwner(userId);
+  }
+
+  // Native Instagram: Check connection status
+  app.get("/api/instagram-native/status", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
+      const org = await getOrgForUser(req, orgIdParam);
+      if (!org) return res.json({ connected: false });
+
+      const result = await pool.query(
+        'SELECT instagram_access_token, instagram_user_id, instagram_username, instagram_token_expires_at FROM organizations WHERE id = $1',
+        [org.id]
+      );
+      const row = result.rows[0];
+      if (!row?.instagram_access_token || !row?.instagram_user_id) {
+        return res.json({ connected: false });
+      }
+
+      // Check if token is expired
+      if (row.instagram_token_expires_at && new Date(row.instagram_token_expires_at) < new Date()) {
+        return res.json({ connected: false, reason: "token_expired" });
+      }
+
+      // Auto-refresh if token expires within 7 days
+      const expiresAt = row.instagram_token_expires_at ? new Date(row.instagram_token_expires_at) : null;
+      const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      if (expiresAt && expiresAt < sevenDaysFromNow && IG_APP_SECRET) {
+        try {
+          const refreshRes = await fetch(
+            `${GRAPH_API}/oauth/access_token?grant_type=fb_exchange_token&client_id=${IG_APP_ID}&client_secret=${IG_APP_SECRET}&fb_exchange_token=${row.instagram_access_token}`
+          );
+          const refreshData = await refreshRes.json() as any;
+          if (refreshData.access_token) {
+            const newExpires = new Date(Date.now() + (refreshData.expires_in || 5184000) * 1000);
+            await pool.query(
+              'UPDATE organizations SET instagram_access_token = $1, instagram_token_expires_at = $2 WHERE id = $3',
+              [refreshData.access_token, newExpires.toISOString(), org.id]
+            );
+            console.log(`[instagram-native] Token refreshed for org ${org.id}`);
+          }
+        } catch (refreshErr) {
+          console.warn("[instagram-native] Token refresh failed:", refreshErr);
+        }
+      }
+
+      // Verify token is still valid by calling Graph API
+      const verifyRes = await fetch(`${GRAPH_API}/${row.instagram_user_id}?fields=username&access_token=${row.instagram_access_token}`);
+      const verifyData = await verifyRes.json() as any;
+
+      if (verifyData.error) {
+        console.warn("[instagram-native] Token invalid:", verifyData.error.message);
+        return res.json({ connected: false, reason: "token_invalid" });
+      }
+
+      // Sync username if changed
+      if (verifyData.username && verifyData.username !== row.instagram_username) {
+        await pool.query('UPDATE organizations SET instagram_username = $1 WHERE id = $2', [verifyData.username, org.id]);
+      }
+
+      res.json({ connected: true, username: verifyData.username || row.instagram_username, orgId: org.id });
+    } catch (error) {
+      console.error("[instagram-native] Status error:", error);
+      res.json({ connected: false });
+    }
+  });
+
+  // Native Instagram: Start OAuth connect flow
+  app.get("/api/instagram-native/connect", isAuthenticated, async (req: Request, res: Response) => {
+    if (!IG_APP_ID || !IG_APP_SECRET) {
+      return res.redirect('/settings?instagram=error&detail=missing_instagram_config');
+    }
+
+    try {
+      const userId = (req as any).user.claims.sub;
+      const email = (req as any).user.claims.email;
+      const isAdmin = email === ADMIN_EMAIL;
+      const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
+
+      let orgId: number | null = null;
+      if (isAdmin && orgIdParam) {
+        orgId = orgIdParam;
+      } else {
+        const org = await storage.getOrganizationByOwner(userId);
+        if (org) orgId = org.id;
+      }
+      if (!orgId) return res.redirect('/settings?instagram=error&detail=no_organization');
+
+      // Store orgId in state param for callback
+      const state = Buffer.from(JSON.stringify({ orgId })).toString('base64url');
+      const redirectUri = `${process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000'}/api/instagram-native/callback`;
+
+      const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement&response_type=code&state=${state}`;
+
+      console.log(`[instagram-native] Redirecting org ${orgId} to Facebook OAuth`);
+      res.redirect(authUrl);
+    } catch (error: any) {
+      console.error("[instagram-native] Connect error:", error);
+      res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(error.message || 'unknown'));
+    }
+  });
+
+  // Native Instagram: OAuth callback
+  app.get("/api/instagram-native/callback", async (req: Request, res: Response) => {
+    const { code, state, error: oauthError } = req.query;
+
+    if (oauthError) {
+      console.error("[instagram-native] OAuth denied:", oauthError);
+      return res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(oauthError as string));
+    }
+
+    if (!code || !state) {
+      return res.redirect('/settings?instagram=error&detail=missing_code_or_state');
+    }
+
+    try {
+      const stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
+      const orgId = stateData.orgId;
+      if (!orgId) throw new Error("No orgId in state");
+
+      const redirectUri = `${process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000'}/api/instagram-native/callback`;
+
+      // Step 1: Exchange code for short-lived token
+      const tokenRes = await fetch(
+        `${GRAPH_API}/oauth/access_token?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${IG_APP_SECRET}&code=${code}`
+      );
+      const tokenData = await tokenRes.json() as any;
+      if (tokenData.error) {
+        console.error("[instagram-native] Token exchange error:", tokenData.error);
+        throw new Error(tokenData.error.message || "Token exchange failed");
+      }
+      const shortLivedToken = tokenData.access_token;
+
+      // Step 2: Exchange for long-lived token (60 days)
+      const longTokenRes = await fetch(
+        `${GRAPH_API}/oauth/access_token?grant_type=fb_exchange_token&client_id=${IG_APP_ID}&client_secret=${IG_APP_SECRET}&fb_exchange_token=${shortLivedToken}`
+      );
+      const longTokenData = await longTokenRes.json() as any;
+      if (longTokenData.error) {
+        console.error("[instagram-native] Long-lived token error:", longTokenData.error);
+        throw new Error(longTokenData.error.message || "Long-lived token exchange failed");
+      }
+      const longLivedToken = longTokenData.access_token;
+      const expiresIn = longTokenData.expires_in || 5184000; // default 60 days
+
+      // Step 3: Get user's Facebook Pages
+      const pagesRes = await fetch(`${GRAPH_API}/me/accounts?access_token=${longLivedToken}`);
+      const pagesData = await pagesRes.json() as any;
+
+      if (!pagesData.data || pagesData.data.length === 0) {
+        console.warn("[instagram-native] No Facebook Pages found");
+        return res.redirect('/settings?instagram=no_page');
+      }
+
+      // Step 4: Find the Instagram Business Account linked to a Page
+      let igUserId: string | null = null;
+      let igUsername: string | null = null;
+      let pageId: string | null = null;
+      let pageAccessToken: string | null = null;
+
+      for (const page of pagesData.data) {
+        const igRes = await fetch(
+          `${GRAPH_API}/${page.id}?fields=instagram_business_account&access_token=${page.access_token || longLivedToken}`
+        );
+        const igData = await igRes.json() as any;
+        if (igData.instagram_business_account?.id) {
+          igUserId = igData.instagram_business_account.id;
+          pageId = page.id;
+          pageAccessToken = page.access_token || longLivedToken;
+          break;
+        }
+      }
+
+      if (!igUserId) {
+        console.warn("[instagram-native] No Instagram Business Account found on any Page");
+        return res.redirect('/settings?instagram=no_ig_account');
+      }
+
+      // Step 5: Get Instagram username
+      const igProfileRes = await fetch(`${GRAPH_API}/${igUserId}?fields=username&access_token=${pageAccessToken}`);
+      const igProfileData = await igProfileRes.json() as any;
+      igUsername = igProfileData.username || null;
+
+      // Step 6: Store everything in DB
+      const expiresAt = new Date(Date.now() + expiresIn * 1000);
+      await pool.query(
+        `UPDATE organizations SET
+          instagram_access_token = $1,
+          instagram_user_id = $2,
+          instagram_username = $3,
+          instagram_page_id = $4,
+          instagram_token_expires_at = $5
+        WHERE id = $6`,
+        [pageAccessToken, igUserId, igUsername, pageId, expiresAt.toISOString(), orgId]
+      );
+
+      console.log(`[instagram-native] Connected org ${orgId}: @${igUsername} (IG ID: ${igUserId})`);
+      res.redirect('/settings?instagram=connected');
+    } catch (error: any) {
+      console.error("[instagram-native] Callback error:", error);
+      res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(error.message || 'callback_failed'));
+    }
+  });
+
+  // Native Instagram: Post image
+  app.post("/api/instagram-native/post", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.claims.sub;
+      const email = (req as any).user.claims.email;
+      const isAdmin = email === ADMIN_EMAIL;
+      const { dogId, caption, image, orgId: bodyOrgId } = req.body;
+
+      let imageToPost: string;
+      let org: any;
+      let defaultCaption: string;
+
+      if (image && bodyOrgId) {
+        // Showcase mode
+        org = await storage.getOrganization(parseInt(bodyOrgId));
+        if (!org) return res.status(404).json({ error: "Organization not found" });
+        if (!isAdmin) {
+          const userOrg = await storage.getOrganizationByOwner(userId);
+          if (!userOrg || userOrg.id !== org.id) {
+            return res.status(403).json({ error: "You don't have access to this organization" });
+          }
+        }
+        imageToPost = image;
+        defaultCaption = caption || `Check out the adorable pets at ${org.name}! #adoptdontshop #rescuepets #pawtraitpals`;
+      } else if (dogId) {
+        // Single dog mode
+        const dog = await storage.getDog(parseInt(dogId));
+        if (!dog) return res.status(404).json({ error: "Dog not found" });
+        org = await storage.getOrganization(dog.organizationId);
+        if (!org) return res.status(404).json({ error: "Organization not found" });
+        if (!isAdmin) {
+          const userOrg = await storage.getOrganizationByOwner(userId);
+          if (!userOrg || userOrg.id !== org.id) {
+            return res.status(403).json({ error: "You don't have access to this organization" });
+          }
+        }
+        const portrait = await storage.getSelectedPortraitByDog(dog.id);
+        if (!portrait || !portrait.generatedImageUrl) {
+          return res.status(400).json({ error: "No portrait found for this pet" });
+        }
+        imageToPost = portrait.generatedImageUrl;
+        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
+        defaultCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
+      } else {
+        return res.status(400).json({ error: "dogId or image+orgId is required" });
+      }
+
+      // Get org's Instagram credentials
+      const result = await pool.query(
+        'SELECT instagram_access_token, instagram_user_id FROM organizations WHERE id = $1',
+        [org.id]
+      );
+      const token = result.rows[0]?.instagram_access_token;
+      const igUserId = result.rows[0]?.instagram_user_id;
+      if (!token || !igUserId) {
+        return res.status(400).json({ error: "Instagram not connected. Please connect Instagram first." });
+      }
+
+      // Store image as public URL
+      const imageUrl = storePublicImage(imageToPost);
+      console.log(`[instagram-native] Posting for org ${org.id}, image URL: ${imageUrl}`);
+
+      // Step 1: Create media container
+      const containerRes = await fetch(`${GRAPH_API}/${igUserId}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_url: imageUrl,
+          caption: defaultCaption,
+          access_token: token,
+        }),
+      });
+      const containerData = await containerRes.json() as any;
+
+      if (containerData.error) {
+        console.error("[instagram-native] Container creation error:", containerData.error);
+        throw new Error(containerData.error.message || "Failed to create media container");
+      }
+      const containerId = containerData.id;
+      console.log(`[instagram-native] Container created: ${containerId}`);
+
+      // Step 2: Poll for container status (max 30 seconds)
+      let ready = false;
+      for (let i = 0; i < 15; i++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const statusRes = await fetch(
+          `${GRAPH_API}/${containerId}?fields=status_code&access_token=${token}`
+        );
+        const statusData = await statusRes.json() as any;
+        if (statusData.status_code === 'FINISHED') {
+          ready = true;
+          break;
+        }
+        if (statusData.status_code === 'ERROR') {
+          throw new Error("Instagram rejected the image. It may be too large or in an unsupported format.");
+        }
+      }
+      if (!ready) {
+        throw new Error("Image processing timed out. Please try again.");
+      }
+
+      // Step 3: Publish
+      const publishRes = await fetch(`${GRAPH_API}/${igUserId}/media_publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creation_id: containerId,
+          access_token: token,
+        }),
+      });
+      const publishData = await publishRes.json() as any;
+
+      if (publishData.error) {
+        console.error("[instagram-native] Publish error:", publishData.error);
+        throw new Error(publishData.error.message || "Failed to publish to Instagram");
+      }
+
+      console.log(`[instagram-native] Published to Instagram: ${publishData.id}`);
+
+      // Clean up cached image
+      const tokenFromUrl = imageUrl.split('/').pop();
+      if (tokenFromUrl) imageCache.delete(tokenFromUrl);
+
+      res.json({
+        success: true,
+        mediaId: publishData.id,
+        postUrl: null, // Graph API doesn't return permalink directly
+      });
+    } catch (error: any) {
+      console.error("[instagram-native] Post error:", error);
+      res.status(500).json({ error: error.message || "Failed to post to Instagram" });
+    }
+  });
+
+  // Native Instagram: Disconnect
+  app.delete("/api/instagram-native/disconnect", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
+      const org = await getOrgForUser(req, orgIdParam);
+      if (!org) return res.status(404).json({ error: "Organization not found" });
+
+      await pool.query(
+        `UPDATE organizations SET
+          instagram_access_token = NULL,
+          instagram_user_id = NULL,
+          instagram_username = NULL,
+          instagram_page_id = NULL,
+          instagram_token_expires_at = NULL
+        WHERE id = $1`,
+        [org.id]
+      );
+
+      console.log(`[instagram-native] Disconnected org ${org.id}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[instagram-native] Disconnect error:", error);
+      res.status(500).json({ error: "Failed to disconnect Instagram" });
+    }
+  });
+
+  // Native Instagram: Data deletion callback (required by Meta)
+  app.post("/api/instagram-native/data-deletion", async (req: Request, res: Response) => {
+    try {
+      const { signed_request } = req.body;
+      if (!signed_request || !IG_APP_SECRET) {
+        return res.status(400).json({ error: "Invalid request" });
+      }
+
+      // Parse signed request
+      const [sig, payload] = signed_request.split('.');
+      const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+      const fbUserId = data.user_id;
+
+      if (fbUserId) {
+        // Clear Instagram data for any org linked to this Facebook user
+        await pool.query(
+          `UPDATE organizations SET
+            instagram_access_token = NULL,
+            instagram_user_id = NULL,
+            instagram_username = NULL,
+            instagram_page_id = NULL,
+            instagram_token_expires_at = NULL
+          WHERE instagram_page_id IS NOT NULL`
+        );
+        console.log(`[instagram-native] Data deletion processed for FB user ${fbUserId}`);
+      }
+
+      // Meta requires this specific response format
+      const confirmationCode = crypto.randomUUID();
+      res.json({
+        url: `https://pawtraitpals.com/privacy`,
+        confirmation_code: confirmationCode,
+      });
+    } catch (error: any) {
+      console.error("[instagram-native] Data deletion error:", error);
+      res.status(500).json({ error: "Failed to process data deletion" });
+    }
+  });
+
+  // Native Instagram: Deauthorize callback (required by Meta)
+  app.post("/api/instagram-native/deauthorize", async (req: Request, res: Response) => {
+    try {
+      const { signed_request } = req.body;
+      if (!signed_request) {
+        return res.status(400).json({ error: "Invalid request" });
+      }
+
+      const [sig, payload] = signed_request.split('.');
+      const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+      const fbUserId = data.user_id;
+
+      if (fbUserId) {
+        await pool.query(
+          `UPDATE organizations SET
+            instagram_access_token = NULL,
+            instagram_user_id = NULL,
+            instagram_username = NULL,
+            instagram_page_id = NULL,
+            instagram_token_expires_at = NULL
+          WHERE instagram_page_id IS NOT NULL`
+        );
+        console.log(`[instagram-native] Deauthorized FB user ${fbUserId}`);
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[instagram-native] Deauthorize error:", error);
+      res.status(500).json({ error: "Failed to process deauthorization" });
     }
   });
 

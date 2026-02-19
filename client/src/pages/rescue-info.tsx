@@ -26,6 +26,8 @@ import { FaXTwitter } from "react-icons/fa6";
 import { NextdoorIcon } from "@/components/nextdoor-icon";
 import type { Organization, SubscriptionPlan, Dog as DogType } from "@shared/schema";
 
+const IG_PREFIX = import.meta.env.VITE_INSTAGRAM_PROVIDER === 'native' ? '/api/instagram-native' : '/api/instagram';
+
 interface OrgDetail extends Organization {
   dogCount?: number;
 }
@@ -82,10 +84,10 @@ export default function RescueInfo() {
   });
 
   const { data: igStatus, refetch: refetchIg } = useQuery<{ connected: boolean; username?: string; orgId?: number }>({
-    queryKey: ["/api/instagram/status", isAdminView ? adminOrgId : undefined],
+    queryKey: [`${IG_PREFIX}/status`, isAdminView ? adminOrgId : undefined],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const url = isAdminView && adminOrgId ? `/api/instagram/status?orgId=${adminOrgId}` : '/api/instagram/status';
+      const url = isAdminView && adminOrgId ? `${IG_PREFIX}/status?orgId=${adminOrgId}` : `${IG_PREFIX}/status`;
       const res = await fetch(url, { headers });
       return res.json();
     },
@@ -880,8 +882,8 @@ export default function RescueInfo() {
                       try {
                         const headers = await getAuthHeaders();
                         const url = isAdminView && adminOrgId
-                          ? `/api/instagram/disconnect?orgId=${adminOrgId}`
-                          : '/api/instagram/disconnect';
+                          ? `${IG_PREFIX}/disconnect?orgId=${adminOrgId}`
+                          : `${IG_PREFIX}/disconnect`;
                         await fetch(url, { method: 'DELETE', headers });
                         toast({ title: "Instagram Disconnected" });
                         refetchIg();
@@ -906,8 +908,8 @@ export default function RescueInfo() {
                     onClick={() => {
                       const token = session?.access_token || '';
                       const url = isAdminView && adminOrgId
-                        ? `/api/instagram/connect?orgId=${adminOrgId}&token=${encodeURIComponent(token)}`
-                        : `/api/instagram/connect?token=${encodeURIComponent(token)}`;
+                        ? `${IG_PREFIX}/connect?orgId=${adminOrgId}&token=${encodeURIComponent(token)}`
+                        : `${IG_PREFIX}/connect?token=${encodeURIComponent(token)}`;
                       window.location.href = url;
                     }}
                   >
