@@ -8,7 +8,7 @@ import { isAuthenticated, registerAuthRoutes } from "./auth";
 import { stripeService } from "./stripeService";
 import { getStripePublishableKey, getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal, getPriceId } from "./stripeClient";
 import rateLimit from "express-rate-limit";
-import Twilio from "twilio";
+
 import { containsInappropriateLanguage } from "@shared/content-filter";
 import { generateShowcaseMockup, generatePawfileMockup } from "./generate-mockups";
 import { isValidBreed } from "./breeds";
@@ -2312,7 +2312,7 @@ export async function registerRoutes(
     }
   });
 
-  // --- SMS sharing via Twilio ---
+  // --- SMS sharing via Telnyx ---
   const smsRateLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 5,
@@ -2335,29 +2335,34 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Please enter a valid phone number" });
       }
 
-      const accountSid = process.env.TWILIO_ACCOUNT_SID;
-      const apiKeySid = process.env.TWILIO_API_KEY_SID;
-      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
-      const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+      const telnyxApiKey = process.env.TELNYX_API_KEY;
+      const telnyxFrom = process.env.TELNYX_PHONE_NUMBER;
 
-      if (!accountSid || !apiKeySid || !apiKeySecret || !messagingServiceSid) {
+      if (!telnyxApiKey || !telnyxFrom) {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
 
-      const client = Twilio(apiKeySid, apiKeySecret, { accountSid });
       const phone = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
 
-      await client.messages.create({
-        body: message,
-        messagingServiceSid,
-        to: phone,
+      const telnyxRes = await fetch("https://api.telnyx.com/v2/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${telnyxApiKey}`,
+        },
+        body: JSON.stringify({ from: telnyxFrom, to: phone, text: message }),
       });
+
+      if (!telnyxRes.ok) {
+        const err = await telnyxRes.json();
+        throw new Error(err.errors?.[0]?.detail || "Failed to send text message");
+      }
 
       res.json({ success: true });
     } catch (error: any) {
       console.error("SMS send error:", error);
-      const twilioMsg = error?.message || "Failed to send text message";
-      res.status(500).json({ error: twilioMsg });
+      const errMsg = error?.message || "Failed to send text message";
+      res.status(500).json({ error: errMsg });
     }
   });
 
