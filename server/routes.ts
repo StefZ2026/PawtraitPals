@@ -2729,7 +2729,8 @@ export async function registerRoutes(
   // Runs alongside Ayrshare; controlled by VITE_INSTAGRAM_PROVIDER env var on frontend
   // ============================================================
 
-  const GRAPH_API = 'https://graph.facebook.com/v21.0';
+  const GRAPH_API = 'https://graph.instagram.com';
+  const GRAPH_API_V = 'https://graph.instagram.com/v21.0';
   const IG_APP_ID = process.env.META_APP_ID;  // 1594575465084269 — the working "Pawtrait Pals" Meta app
   const IG_APP_SECRET = process.env.META_APP_SECRET;
 
@@ -2812,7 +2813,7 @@ export async function registerRoutes(
       if (expiresAt && expiresAt < sevenDaysFromNow && IG_APP_SECRET) {
         try {
           const refreshRes = await fetch(
-            `${GRAPH_API}/oauth/access_token?grant_type=fb_exchange_token&client_id=${IG_APP_ID}&client_secret=${IG_APP_SECRET}&fb_exchange_token=${row.instagram_access_token}`
+            `${GRAPH_API}/refresh_access_token?grant_type=ig_refresh_token&access_token=${row.instagram_access_token}`
           );
           const refreshData = await refreshRes.json() as any;
           if (refreshData.access_token) {
@@ -2874,7 +2875,7 @@ export async function registerRoutes(
       const state = Buffer.from(JSON.stringify({ orgId })).toString('base64url');
       const redirectUri = `${process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000'}/api/instagram-native/callback`;
 
-      const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement&response_type=code&state=${state}`;
+      const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=instagram_business_basic,instagram_business_content_publish&response_type=code&state=${state}`;
 
       console.log(`[instagram-native] Redirecting org ${orgId} to Facebook OAuth`);
       res.redirect(authUrl);
@@ -2904,20 +2905,29 @@ export async function registerRoutes(
 
       const redirectUri = `${process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000'}/api/instagram-native/callback`;
 
-      // Step 1: Exchange code for short-lived token
-      const tokenRes = await fetch(
-        `${GRAPH_API}/oauth/access_token?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${IG_APP_SECRET}&code=${code}`
-      );
+      // Step 1: Exchange code for short-lived token (Instagram Platform API)
+      const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: IG_APP_ID!,
+          client_secret: IG_APP_SECRET!,
+          grant_type: 'authorization_code',
+          redirect_uri: redirectUri,
+          code: code as string,
+        }).toString(),
+      });
       const tokenData = await tokenRes.json() as any;
-      if (tokenData.error) {
-        console.error("[instagram-native] Token exchange error:", tokenData.error);
-        throw new Error(tokenData.error.message || "Token exchange failed");
+      if (tokenData.error_type || tokenData.error) {
+        console.error("[instagram-native] Token exchange error:", tokenData);
+        throw new Error(tokenData.error_message || tokenData.error?.message || "Token exchange failed");
       }
       const shortLivedToken = tokenData.access_token;
+      const igUserId = String(tokenData.user_id);
 
       // Step 2: Exchange for long-lived token (60 days)
       const longTokenRes = await fetch(
-        `${GRAPH_API}/oauth/access_token?grant_type=fb_exchange_token&client_id=${IG_APP_ID}&client_secret=${IG_APP_SECRET}&fb_exchange_token=${shortLivedToken}`
+        `${GRAPH_API}/access_token?grant_type=ig_exchange_token&client_secret=${IG_APP_SECRET}&access_token=${shortLivedToken}`
       );
       const longTokenData = await longTokenRes.json() as any;
       if (longTokenData.error) {
@@ -2927,45 +2937,12 @@ export async function registerRoutes(
       const longLivedToken = longTokenData.access_token;
       const expiresIn = longTokenData.expires_in || 5184000; // default 60 days
 
-      // Step 3: Get user's Facebook Pages
-      const pagesRes = await fetch(`${GRAPH_API}/me/accounts?access_token=${longLivedToken}`);
-      const pagesData = await pagesRes.json() as any;
-
-      if (!pagesData.data || pagesData.data.length === 0) {
-        console.warn("[instagram-native] No Facebook Pages found");
-        return res.redirect('/settings?instagram=no_page');
-      }
-
-      // Step 4: Find the Instagram Business Account linked to a Page
-      let igUserId: string | null = null;
-      let igUsername: string | null = null;
-      let pageId: string | null = null;
-      let pageAccessToken: string | null = null;
-
-      for (const page of pagesData.data) {
-        const igRes = await fetch(
-          `${GRAPH_API}/${page.id}?fields=instagram_business_account&access_token=${page.access_token || longLivedToken}`
-        );
-        const igData = await igRes.json() as any;
-        if (igData.instagram_business_account?.id) {
-          igUserId = igData.instagram_business_account.id;
-          pageId = page.id;
-          pageAccessToken = page.access_token || longLivedToken;
-          break;
-        }
-      }
-
-      if (!igUserId) {
-        console.warn("[instagram-native] No Instagram Business Account found on any Page");
-        return res.redirect('/settings?instagram=no_ig_account');
-      }
-
-      // Step 5: Get Instagram username
-      const igProfileRes = await fetch(`${GRAPH_API}/${igUserId}?fields=username&access_token=${pageAccessToken}`);
+      // Step 3: Get Instagram username directly (no Facebook Pages needed)
+      const igProfileRes = await fetch(`${GRAPH_API}/${igUserId}?fields=user_id,username&access_token=${longLivedToken}`);
       const igProfileData = await igProfileRes.json() as any;
-      igUsername = igProfileData.username || null;
+      const igUsername = igProfileData.username || null;
 
-      // Step 6: Store everything in DB
+      // Step 4: Store everything in DB
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
       await pool.query(
         `UPDATE organizations SET
@@ -2975,7 +2952,7 @@ export async function registerRoutes(
           instagram_page_id = $4,
           instagram_token_expires_at = $5
         WHERE id = $6`,
-        [pageAccessToken, igUserId, igUsername, pageId, expiresAt.toISOString(), orgId]
+        [longLivedToken, igUserId, igUsername, null, expiresAt.toISOString(), orgId]
       );
 
       console.log(`[instagram-native] Connected org ${orgId}: @${igUsername} (IG ID: ${igUserId})`);
@@ -3050,7 +3027,7 @@ export async function registerRoutes(
       console.log(`[instagram-native] Posting for org ${org.id}, image URL: ${imageUrl}`);
 
       // Step 1: Create media container
-      const containerRes = await fetch(`${GRAPH_API}/${igUserId}/media`, {
+      const containerRes = await fetch(`${GRAPH_API_V}/${igUserId}/media`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3073,7 +3050,7 @@ export async function registerRoutes(
       for (let i = 0; i < 15; i++) {
         await new Promise(resolve => setTimeout(resolve, 2000));
         const statusRes = await fetch(
-          `${GRAPH_API}/${containerId}?fields=status_code&access_token=${token}`
+          `${GRAPH_API_V}/${containerId}?fields=status_code&access_token=${token}`
         );
         const statusData = await statusRes.json() as any;
         if (statusData.status_code === 'FINISHED') {
@@ -3089,7 +3066,7 @@ export async function registerRoutes(
       }
 
       // Step 3: Publish
-      const publishRes = await fetch(`${GRAPH_API}/${igUserId}/media_publish`, {
+      const publishRes = await fetch(`${GRAPH_API_V}/${igUserId}/media_publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
