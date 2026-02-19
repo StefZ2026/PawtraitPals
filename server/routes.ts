@@ -2928,7 +2928,6 @@ export async function registerRoutes(
         throw new Error(tokenData.error_message || tokenData.error?.message || "Token exchange failed");
       }
       const shortLivedToken = tokenData.access_token;
-      const igUserId = String(tokenData.user_id);
 
       // Step 2: Exchange for long-lived token (60 days)
       const longTokenRes = await fetch(
@@ -2942,10 +2941,12 @@ export async function registerRoutes(
       const longLivedToken = longTokenData.access_token;
       const expiresIn = longTokenData.expires_in || 5184000; // default 60 days
 
-      // Step 3: Get Instagram username directly (use /me with versioned endpoint)
+      // Step 3: Get Instagram profile (use /me — returns id as string, avoids JS number precision loss)
       const igProfileRes = await fetch(`${GRAPH_API_V}/me?fields=user_id,username&access_token=${longLivedToken}`);
       const igProfileData = await igProfileRes.json() as any;
+      const igUserId = igProfileData.id; // Use 'id' field (string) — NOT tokenData.user_id (number, loses precision for large IDs)
       const igUsername = igProfileData.username || null;
+      console.log(`[instagram-native] Profile: id=${igUserId}, username=${igUsername}`);
 
       // Step 4: Store everything in DB
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
