@@ -2829,8 +2829,8 @@ export async function registerRoutes(
         }
       }
 
-      // Verify token is still valid by calling Graph API
-      const verifyRes = await fetch(`${GRAPH_API}/${row.instagram_user_id}?fields=username&access_token=${row.instagram_access_token}`);
+      // Verify token is still valid by calling Graph API (use /me with versioned endpoint)
+      const verifyRes = await fetch(`${GRAPH_API_V}/me?fields=user_id,username&access_token=${row.instagram_access_token}`);
       const verifyData = await verifyRes.json() as any;
 
       if (verifyData.error) {
@@ -2942,8 +2942,8 @@ export async function registerRoutes(
       const longLivedToken = longTokenData.access_token;
       const expiresIn = longTokenData.expires_in || 5184000; // default 60 days
 
-      // Step 3: Get Instagram username directly (no Facebook Pages needed)
-      const igProfileRes = await fetch(`${GRAPH_API}/${igUserId}?fields=user_id,username&access_token=${longLivedToken}`);
+      // Step 3: Get Instagram username directly (use /me with versioned endpoint)
+      const igProfileRes = await fetch(`${GRAPH_API_V}/me?fields=user_id,username&access_token=${longLivedToken}`);
       const igProfileData = await igProfileRes.json() as any;
       const igUsername = igProfileData.username || null;
 
