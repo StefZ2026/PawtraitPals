@@ -363,7 +363,7 @@ export default function ChoosePlan() {
                         </li>
                         <li className="flex items-start gap-2">
                           <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                          <span>{plan.monthlyPortraitCredits || 9} portrait credits/mo</span>
+                          <span>{plan.monthlyPortraitCredits || 20} portrait credits/mo</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />

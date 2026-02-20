@@ -7,7 +7,7 @@ const planDefinitions = [
   {
     id: 5,
     name: "Free Trial",
-    description: "Try Pawtrait Pals free for 30 days with up to 3 pets",
+    description: "Try Pawtrait Pals free for 30 days with up to 3 pets and 20 portrait credits",
     priceMonthly: 0,
     dogsLimit: 3,
     monthlyPortraitCredits: 9,
