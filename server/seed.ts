@@ -10,7 +10,7 @@ const planDefinitions = [
     description: "Try Pawtrait Pals free for 30 days with up to 3 pets and 20 portrait credits",
     priceMonthly: 0,
     dogsLimit: 3,
-    monthlyPortraitCredits: 9,
+    monthlyPortraitCredits: 20,
     overagePriceCents: 0,
     trialDays: 30,
   },
