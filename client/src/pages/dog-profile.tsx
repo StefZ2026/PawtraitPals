@@ -25,6 +25,7 @@ interface DogWithPortrait extends DogType {
   portrait?: Portrait;
   organizationName?: string | null;
   organizationLogoUrl?: string | null;
+  organizationWebsiteUrl?: string | null;
 }
 
 export default function DogProfile() {
@@ -50,7 +51,7 @@ export default function DogProfile() {
   const speciesWord = isCat ? "cat" : "dog";
   const rescueName = dog?.organizationName;
   const shareTitle = `${dog?.name}'s Pawfile${rescueName ? ` from ${rescueName}` : ''} - Available for Adoption`;
-  const shareText = `Meet ${dog?.name}, a beautiful ${dog?.breed || (isCat ? "cat" : "dog")} looking for a forever home${rescueName ? ` through ${rescueName}` : ''}! View their pawfile on Pawtrait Pals.`;
+  const shareText = `Meet ${dog?.name}, a beautiful ${dog?.breed || (isCat ? "cat" : "dog")} looking for a forever home${rescueName ? ` through ${rescueName}` : ''}!`;
 
   const handlePrint = () => {
     window.print();
@@ -267,7 +268,7 @@ export default function DogProfile() {
           </div>
           <div className="mt-3 print:hidden">
             <p className="text-sm text-muted-foreground mb-2">Share {dog.name}'s pawfile:</p>
-            <ShareButtons title={shareTitle} text={shareText} dogId={dog.id} dogName={dog.name} dogBreed={dog.breed || undefined} orgId={dog.organizationId} captureRef={cardRef} />
+            <ShareButtons title={shareTitle} text={shareText} dogId={dog.id} dogName={dog.name} dogBreed={dog.breed || undefined} orgId={dog.organizationId} adoptionUrl={dog.adoptionUrl || undefined} orgWebsiteUrl={dog.organizationWebsiteUrl || undefined} captureRef={cardRef} />
           </div>
         </div>
       </div>

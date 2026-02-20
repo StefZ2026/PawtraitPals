@@ -1278,6 +1278,7 @@ export async function registerRoutes(
         ...dog,
         organizationName: org?.name || null,
         organizationLogoUrl: org?.logoUrl || null,
+        organizationWebsiteUrl: org?.websiteUrl || null,
         portrait: portrait || undefined,
         portraits: portraitsWithStyles,
       });
@@ -2562,7 +2563,8 @@ export async function registerRoutes(
         imageToUpload = image;
         fileName = `showcase-${org.id}-${Date.now()}.png`;
         description = `Showcase from ${org.name}`;
-        defaultCaption = caption || `Check out the adorable pets at ${org.name}! #adoptdontshop #rescuepets #pawtraitpals`;
+        const showcaseLink = org.websiteUrl || `https://pawtraitpals.com/rescue/${org.slug}`;
+        defaultCaption = caption || `Check out the adorable pets at ${org.name}! Learn more at ${showcaseLink}\n\n#adoptdontshop #rescuepets #pawtraitpals`;
       } else if (dogId) {
         // Single dog mode: post a specific dog's portrait
         const dog = await storage.getDog(parseInt(dogId));
@@ -2582,9 +2584,8 @@ export async function registerRoutes(
         imageToUpload = portrait.generatedImageUrl;
         fileName = `portrait-${dog.id}-${Date.now()}.png`;
         description = `Pawtrait of ${dog.name}`;
-        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
-        defaultCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
+        const adoptLink = dog.adoptionUrl || org.websiteUrl || `https://pawtraitpals.com/pawfile/${dog.id}`;
+        defaultCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}Looking for a forever home. Learn more and adopt at ${adoptLink}\n\n#adoptdontshop #rescuepets #pawtraitpals`;
       } else {
         return res.status(400).json({ error: "dogId or image+orgId is required" });
       }
@@ -2992,7 +2993,8 @@ export async function registerRoutes(
           }
         }
         imageToPost = image;
-        defaultCaption = caption || `Check out the adorable pets at ${org.name}! #adoptdontshop #rescuepets #pawtraitpals`;
+        const showcaseLink = org.websiteUrl || `https://pawtraitpals.com/rescue/${org.slug}`;
+        defaultCaption = caption || `Check out the adorable pets at ${org.name}! Learn more at ${showcaseLink}\n\n#adoptdontshop #rescuepets #pawtraitpals`;
       } else if (dogId) {
         // Single dog mode
         const dog = await storage.getDog(parseInt(dogId));
@@ -3010,9 +3012,8 @@ export async function registerRoutes(
           return res.status(400).json({ error: "No portrait found for this pet" });
         }
         imageToPost = portrait.generatedImageUrl;
-        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
-        defaultCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}looking for a forever home. View their full profile at ${proto}://${host}/pawfile/${dog.id} #adoptdontshop #rescuepets #pawtraitpals`;
+        const adoptLink = dog.adoptionUrl || org.websiteUrl || `https://pawtraitpals.com/pawfile/${dog.id}`;
+        defaultCaption = caption || `Meet ${dog.name}! ${dog.breed ? `A beautiful ${dog.breed} ` : ''}Looking for a forever home. Learn more and adopt at ${adoptLink}\n\n#adoptdontshop #rescuepets #pawtraitpals`;
       } else {
         return res.status(400).json({ error: "dogId or image+orgId is required" });
       }

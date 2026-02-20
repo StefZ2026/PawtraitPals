@@ -326,6 +326,7 @@ export default function Create() {
     const nameCheck = validatePetName(petName);
     if (!nameCheck.valid) return toast({ title: nameCheck.error || "Invalid name", variant: "destructive" });
     if (!petBreed) return toast({ title: "Select a breed", variant: "destructive" });
+    if (!adoptionUrl.trim()) return toast({ title: "Add an adoption page URL", description: "This is where people will go to learn more and adopt this pet.", variant: "destructive" });
     if (!selectedStyle) return toast({ title: "Pick an art style", variant: "destructive" });
     generateMutation.mutate();
   }, [uploadedImage, selectedStyle, petName, petBreed, adoptionUrl, generateMutation, toast]);
@@ -494,7 +495,7 @@ export default function Create() {
                   <BreedSelector species={effectiveSpecies} value={petBreed} onChange={setPetBreed} />
                   <Input placeholder="Age (optional)" value={petAge} onChange={(e) => setPetAge(e.target.value)} data-testid="input-pet-age" />
                 </div>
-                <Input placeholder="Adoption page URL (optional)" value={adoptionUrl} onChange={(e) => setAdoptionUrl(e.target.value)} data-testid="input-adoption-url" />
+                <Input placeholder="Adoption page URL *" value={adoptionUrl} onChange={(e) => setAdoptionUrl(e.target.value)} data-testid="input-adoption-url" />
                 <Textarea
                   placeholder="Tell people about this pet — personality, quirks, likes... (optional)"
                   value={petDescription}

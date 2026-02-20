@@ -366,7 +366,7 @@ export default function RescueShowcase() {
           </div>
           <div className="mt-3 print:hidden">
             <p className="text-sm text-muted-foreground mb-2">Share this showcase:</p>
-            <ShareButtons title={shareTitle} text={shareText} orgId={rescue.id} captureRef={showcaseRef} showcaseName={rescue.name} />
+            <ShareButtons title={shareTitle} text={shareText} orgId={rescue.id} orgWebsiteUrl={rescue.websiteUrl || undefined} captureRef={showcaseRef} showcaseName={rescue.name} />
           </div>
         </div>
       </div>

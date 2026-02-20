@@ -30,13 +30,17 @@ interface ShareButtonsProps {
   dogName?: string;
   dogBreed?: string;
   orgId?: number;
+  /** Pet's adoption page URL (e.g. Petfinder, Adopt-a-Pet, rescue site) */
+  adoptionUrl?: string;
+  /** Rescue organization's website URL */
+  orgWebsiteUrl?: string;
   /** Ref to a DOM element to capture as image for Instagram (used on showcase) */
   captureRef?: RefObject<HTMLDivElement | null>;
   /** Caption context for showcase posts (e.g. rescue name) */
   showcaseName?: string;
 }
 
-export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId, captureRef, showcaseName }: ShareButtonsProps) {
+export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId, adoptionUrl, orgWebsiteUrl, captureRef, showcaseName }: ShareButtonsProps) {
   const { toast } = useToast();
   const { session, isAuthenticated } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -51,9 +55,11 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const shareUrl = url || window.location.href;
-  const encodedUrl = encodeURIComponent(shareUrl);
+  // External URL: prioritize rescue's adoption/website URL over pawtraitpals links
+  const externalUrl = adoptionUrl || orgWebsiteUrl || shareUrl;
+  const encodedUrl = encodeURIComponent(externalUrl);
   const encodedText = encodeURIComponent(text);
-  const smsBody = `${text} ${shareUrl}`;
+  const smsBody = `${text} ${externalUrl}`;
   const smsHref = `sms:?body=${encodeURIComponent(smsBody)}`;
 
   // Show Instagram button when we have a dogId OR a captureRef (showcase)
@@ -69,7 +75,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   });
 
   const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(shareUrl);
+    await navigator.clipboard.writeText(externalUrl);
     setCopied(true);
     toast({ title: "Link Copied!", description: "Paste it anywhere to share." });
     setTimeout(() => setCopied(false), 2000);
@@ -120,8 +126,8 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
       });
       setCapturedImage(dataUrl);
       const defaultCaption = dogId
-        ? `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`
-        : `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Visit ${shareUrl} to learn more.\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
+        ? `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. Learn more and adopt at ${externalUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`
+        : `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Learn more at ${externalUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
       setIgCaption(defaultCaption);
       setIgOpen(true);
     } catch (err) {
