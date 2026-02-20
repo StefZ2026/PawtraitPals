@@ -22,6 +22,7 @@ import Onboarding from "@/pages/onboarding";
 import Login from "@/pages/login";
 import Privacy from "@/pages/privacy";
 import Terms from "@/pages/terms";
+import SmsOptIn from "@/pages/sms-opt-in";
 
 function Router() {
   return (
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/rescue/:slug" component={RescueShowcase} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/terms" component={Terms} />
+      <Route path="/sms-opt-in" component={SmsOptIn} />
       <Route component={NotFound} />
     </Switch>
   );
