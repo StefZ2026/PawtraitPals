@@ -98,12 +98,27 @@ export default function Privacy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">7. Data Sharing and Disclosure</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">7. SMS/Text Messaging</h2>
+            <p className="text-muted-foreground leading-relaxed mb-3">
+              Pawtrait Pals offers an optional SMS feature that allows users to share pet portrait links via text message. By using this feature, you consent to the following:
+            </p>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+              <li><strong>Opt-in:</strong> SMS messages are only sent when you explicitly enter a phone number and check the consent box in the "Send via Text" dialog. No automated or marketing messages are sent.</li>
+              <li><strong>Message content:</strong> Messages contain a link to a pet portrait on Pawtrait Pals and a brief description. Standard message and data rates may apply.</li>
+              <li><strong>Opt-out:</strong> Recipients can reply STOP to any message to opt out of future texts from this number.</li>
+              <li><strong>Phone numbers:</strong> We do not store recipient phone numbers after the message is sent. Phone numbers are transmitted to our SMS provider (Telnyx) solely for message delivery.</li>
+              <li><strong>Frequency:</strong> Messages are sent only on demand — one message per share action initiated by the user.</li>
+              <li><strong>Help:</strong> Reply HELP to any message for support, or contact us at stefanie@pawtraitpals.com.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-serif font-semibold mb-3">8. Data Sharing and Disclosure</h2>
             <p className="text-muted-foreground leading-relaxed mb-3">
               We do not sell, trade, or rent your personal information to third parties. We may share information with:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li><strong>Service providers:</strong> Supabase (authentication and database), Stripe (payments), Google Gemini (AI portrait generation), Meta/Instagram (social posting), Twilio (SMS), and Render (hosting) — each acting as data processors bound by their own privacy policies and data processing agreements</li>
+              <li><strong>Service providers:</strong> Supabase (authentication and database), Stripe (payments), Google Gemini (AI portrait generation), Meta/Instagram (social posting), Telnyx (SMS), and Render (hosting) — each acting as data processors bound by their own privacy policies and data processing agreements</li>
               <li><strong>Public showcase pages:</strong> Organization name, description, location, logo, and pet profiles (including portraits) that you choose to make public are visible to anyone visiting your rescue's showcase page</li>
               <li><strong>Social media platforms:</strong> When you use Instagram posting or other social sharing features, the content you choose to share is transmitted to those platforms</li>
               <li><strong>Legal requirements:</strong> We may disclose information if required by law, court order, or in response to valid legal process</li>
@@ -111,14 +126,14 @@ export default function Privacy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">8. International Data Transfers</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">9. International Data Transfers</h2>
             <p className="text-muted-foreground leading-relaxed">
               Your data is stored on servers in the United States. If you are accessing the Service from the EEA, UK, or other regions with data protection laws, please be aware that your data will be transferred to and processed in the United States. We ensure appropriate safeguards are in place for such transfers, including reliance on Standard Contractual Clauses (SCCs) where applicable, and our service providers maintain appropriate data protection measures.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">9. Data Retention</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">10. Data Retention</h2>
             <p className="text-muted-foreground leading-relaxed">
               We retain your personal data only for as long as necessary to provide the Service and fulfill the purposes described in this policy. Specifically:
             </p>
@@ -132,14 +147,14 @@ export default function Privacy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">10. Data Storage and Security</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">11. Data Storage and Security</h2>
             <p className="text-muted-foreground leading-relaxed">
               Your data is stored securely using Supabase's PostgreSQL database infrastructure hosted on Amazon Web Services (AWS) in the United States. We use industry-standard security measures including encrypted connections (SSL/TLS), secure authentication tokens (JWT), role-based access controls, and encrypted data at rest. While we strive to protect your information, no method of electronic storage is 100% secure. In the event of a data breach, we will notify affected users and relevant supervisory authorities within 72 hours as required by GDPR.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">11. Your Rights</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">12. Your Rights</h2>
             <p className="text-muted-foreground leading-relaxed mb-3">
               Depending on your location, you have the following rights regarding your personal data:
             </p>
@@ -178,28 +193,28 @@ export default function Privacy() {
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">12. Cookies and Tracking</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">13. Cookies and Tracking</h2>
             <p className="text-muted-foreground leading-relaxed">
               We use essential cookies only — specifically for session management and authentication. We do not use advertising cookies, tracking pixels, or third-party analytics that track you across websites. Your authentication session is managed through secure, HTTP-only tokens.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">13. Children's Privacy</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">14. Children's Privacy</h2>
             <p className="text-muted-foreground leading-relaxed">
               The Service is not directed to individuals under the age of 16 (or 13 in jurisdictions where permitted). We do not knowingly collect personal information from children. If we become aware that we have collected information from a child below the applicable age, we will take steps to delete that information promptly.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">14. Changes to This Policy</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">15. Changes to This Policy</h2>
             <p className="text-muted-foreground leading-relaxed">
               We may update this Privacy Policy from time to time. We will notify you of material changes by posting the new Privacy Policy on this page, updating the "Last updated" date, and, for significant changes, sending an email notification to the address associated with your account. Your continued use of the Service after changes constitutes acceptance of the updated policy.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-serif font-semibold mb-3">15. Contact Us</h2>
+            <h2 className="text-xl font-serif font-semibold mb-3">16. Contact Us</h2>
             <p className="text-muted-foreground leading-relaxed">
               If you have questions about this Privacy Policy or wish to exercise your data protection rights, please contact us at:
             </p>

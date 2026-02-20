@@ -44,6 +44,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   const [igOpen, setIgOpen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [smsConsent, setSmsConsent] = useState(false);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
   const [sending, setSending] = useState(false);
   const [igPosting, setIgPosting] = useState(false);
   const [igCaption, setIgCaption] = useState("");
@@ -255,7 +256,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
         </Tooltip>
       </div>
 
-      <Dialog open={smsOpen} onOpenChange={(open) => { setSmsOpen(open); if (!open) { setSmsConsent(false); setPhoneNumber(""); } }}>
+      <Dialog open={smsOpen} onOpenChange={(open) => { setSmsOpen(open); if (!open) { setSmsConsent(false); setPrivacyConsent(false); setPhoneNumber(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Send via Text</DialogTitle>
@@ -266,23 +267,34 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
               placeholder="(555) 123-4567"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && smsConsent && handleSendSms()}
+              onKeyDown={(e) => e.key === "Enter" && smsConsent && privacyConsent && handleSendSms()}
               disabled={sending}
               className="flex-1"
             />
-            <Button onClick={handleSendSms} disabled={sending || !phoneNumber.trim() || !smsConsent}>
+            <Button onClick={handleSendSms} disabled={sending || !phoneNumber.trim() || !smsConsent || !privacyConsent}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
-          <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={smsConsent}
-              onChange={(e) => setSmsConsent(e.target.checked)}
-              className="mt-0.5 rounded border-gray-300"
-            />
-            <span>I agree to send an SMS to this number via Pawtrait Pals. Message &amp; data rates may apply. Recipient can reply STOP to opt out.</span>
-          </label>
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={smsConsent}
+                onChange={(e) => setSmsConsent(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300"
+              />
+              <span>I agree to send an SMS to this number via Pawtrait Pals. Message &amp; data rates may apply. Recipient can reply STOP to opt out.</span>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={privacyConsent}
+                onChange={(e) => setPrivacyConsent(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300"
+              />
+              <span>I have read and agree to the Pawtrait Pals <a href="/privacy" target="_blank" className="underline text-primary">Privacy Policy</a>.</span>
+            </label>
+          </div>
         </DialogContent>
       </Dialog>
 
