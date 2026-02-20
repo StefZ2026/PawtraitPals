@@ -2337,27 +2337,30 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Please enter a valid phone number" });
       }
 
-      const telnyxApiKey = process.env.TELNYX_API_KEY;
-      const telnyxFrom = process.env.TELNYX_PHONE_NUMBER;
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioKeySid = process.env.TWILIO_API_KEY_SID;
+      const twilioKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const twilioMsgSvc = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
-      if (!telnyxApiKey || !telnyxFrom) {
+      if (!twilioSid || !twilioKeySid || !twilioKeySecret || !twilioMsgSvc) {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
 
       const phone = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
 
-      const telnyxRes = await fetch("https://api.telnyx.com/v2/messages", {
+      const twilioAuth = Buffer.from(`${twilioKeySid}:${twilioKeySecret}`).toString("base64");
+      const twilioRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${telnyxApiKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Basic ${twilioAuth}`,
         },
-        body: JSON.stringify({ from: telnyxFrom, to: phone, text: message }),
+        body: new URLSearchParams({ To: phone, MessagingServiceSid: twilioMsgSvc, Body: message }).toString(),
       });
 
-      if (!telnyxRes.ok) {
-        const err = await telnyxRes.json();
-        throw new Error(err.errors?.[0]?.detail || "Failed to send text message");
+      if (!twilioRes.ok) {
+        const err = await twilioRes.json();
+        throw new Error(err.message || "Failed to send text message");
       }
 
       res.json({ success: true });
