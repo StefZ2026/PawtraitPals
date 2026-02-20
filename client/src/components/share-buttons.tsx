@@ -43,6 +43,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   const [smsOpen, setSmsOpen] = useState(false);
   const [igOpen, setIgOpen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
   const [sending, setSending] = useState(false);
   const [igPosting, setIgPosting] = useState(false);
   const [igCaption, setIgCaption] = useState("");
@@ -254,7 +255,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
         </Tooltip>
       </div>
 
-      <Dialog open={smsOpen} onOpenChange={setSmsOpen}>
+      <Dialog open={smsOpen} onOpenChange={(open) => { setSmsOpen(open); if (!open) { setSmsConsent(false); setPhoneNumber(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Send via Text</DialogTitle>
@@ -265,14 +266,23 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
               placeholder="(555) 123-4567"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendSms()}
+              onKeyDown={(e) => e.key === "Enter" && smsConsent && handleSendSms()}
               disabled={sending}
               className="flex-1"
             />
-            <Button onClick={handleSendSms} disabled={sending || !phoneNumber.trim()}>
+            <Button onClick={handleSendSms} disabled={sending || !phoneNumber.trim() || !smsConsent}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
+          <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={smsConsent}
+              onChange={(e) => setSmsConsent(e.target.checked)}
+              className="mt-0.5 rounded border-gray-300"
+            />
+            <span>I agree to send an SMS to this number via Pawtrait Pals. Message &amp; data rates may apply. Recipient can reply STOP to opt out.</span>
+          </label>
         </DialogContent>
       </Dialog>
 
