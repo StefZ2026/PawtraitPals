@@ -44,11 +44,11 @@ export default function SmsOptIn() {
                   </div>
                   <div className="space-y-3 mb-4">
                     <label className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <input type="checkbox" checked readOnly className="mt-0.5 rounded border-gray-300" />
+                      <input type="checkbox" disabled className="mt-0.5 rounded border-gray-300" />
                       <span>I agree to send an SMS to this number via Pawtrait Pals. Message &amp; data rates may apply. Recipient can reply STOP to opt out.</span>
                     </label>
                     <label className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <input type="checkbox" checked readOnly className="mt-0.5 rounded border-gray-300" />
+                      <input type="checkbox" disabled className="mt-0.5 rounded border-gray-300" />
                       <span>I have read and agree to the Pawtrait Pals <a href="/privacy" className="underline text-primary">Privacy Policy</a>.</span>
                     </label>
                   </div>
