@@ -221,12 +221,12 @@ export default function DogProfile() {
                     href={dog.adoptionUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-medium hover:bg-primary/20 transition-colors cursor-pointer"
+                    className="inline-flex items-center justify-center gap-2 w-full bg-primary text-primary-foreground px-6 py-3 rounded-lg text-base font-semibold hover:bg-primary/90 transition-colors cursor-pointer shadow-sm"
                     data-testid="link-adopt"
                   >
-                    <Heart className="h-3.5 w-3.5" />
-                    Available for Adoption
-                    <ExternalLink className="h-3 w-3" />
+                    <Heart className="h-4 w-4" />
+                    Learn More & Adopt
+                    <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : (
                   <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary px-4 py-1.5 rounded-full text-sm font-medium">

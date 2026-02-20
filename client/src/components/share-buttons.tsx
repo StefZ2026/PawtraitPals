@@ -55,11 +55,9 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const shareUrl = url || window.location.href;
-  // External URL: prioritize rescue's adoption/website URL over pawtraitpals links
-  const externalUrl = adoptionUrl || orgWebsiteUrl || shareUrl;
-  const encodedUrl = encodeURIComponent(externalUrl);
+  const encodedUrl = encodeURIComponent(shareUrl);
   const encodedText = encodeURIComponent(text);
-  const smsBody = `${text} ${externalUrl}`;
+  const smsBody = `${text} ${shareUrl}`;
   const smsHref = `sms:?body=${encodeURIComponent(smsBody)}`;
 
   // Show Instagram button when we have a dogId OR a captureRef (showcase)
@@ -75,7 +73,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
   });
 
   const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(externalUrl);
+    await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     toast({ title: "Link Copied!", description: "Paste it anywhere to share." });
     setTimeout(() => setCopied(false), 2000);
@@ -126,8 +124,8 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
       });
       setCapturedImage(dataUrl);
       const defaultCaption = dogId
-        ? `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. Learn more and adopt at ${externalUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`
-        : `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Learn more at ${externalUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
+        ? `Meet ${dogName || 'this adorable pet'}! ${dogBreed ? `A beautiful ${dogBreed} ` : ''}Looking for a forever home. View their full profile at ${shareUrl}\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`
+        : `Check out the adorable pets available for adoption at ${showcaseName || 'our rescue'}! Visit ${shareUrl} to learn more.\n\n#adoptdontshop #rescuepets #pawtraitpals #fosteringsaveslives`;
       setIgCaption(defaultCaption);
       setIgOpen(true);
     } catch (err) {
