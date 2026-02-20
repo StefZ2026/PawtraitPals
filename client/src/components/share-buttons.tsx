@@ -81,6 +81,10 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
 
   const handleSendSms = async () => {
     if (!phoneNumber.trim()) return;
+    if (!session?.access_token) {
+      toast({ title: "Sign In Required", description: "Please log in to send a text.", variant: "destructive" });
+      return;
+    }
     setSending(true);
     try {
       const res = await fetch("/api/send-sms", {
@@ -226,7 +230,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
             </TooltipTrigger>
             <TooltipContent>Send via Text</TooltipContent>
           </Tooltip>
-        ) : session ? (
+        ) : (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -240,7 +244,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
             </TooltipTrigger>
             <TooltipContent>Send via Text</TooltipContent>
           </Tooltip>
-        ) : null}
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
