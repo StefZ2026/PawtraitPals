@@ -34,15 +34,17 @@ function normalizeAnimal(animal: any): NormalizedAnimal {
     photos.push(animal.CoverPhoto);
   }
 
+  const animalId = String(animal.ID || animal["Internal-ID"]);
+
   return {
-    externalId: String(animal.ID || animal["Internal-ID"]),
+    externalId: animalId,
     name: animal.Name || "Unknown",
     species: type === "cat" ? "cat" : "dog",
     breed: animal.Breed || null,
     age: animal.Age || null,
     description: animal.Description || null,
     photos,
-    adoptionUrl: null, // ShelterLuv doesn't provide direct adoption URLs
+    adoptionUrl: `https://www.shelterluv.com/embed/animal/${animalId}`,
     isAvailable: (animal.Status || "").toLowerCase() === "available",
     tags: extractTags(animal),
   };

@@ -164,7 +164,6 @@ export default function ImportPets() {
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!animals) throw new Error("No animals to import");
-      if (!adoptionUrl.trim()) throw new Error("Please enter your adoption page URL before importing.");
 
       const toImport = animals
         .filter((a) => selectedAnimals.has(a.externalId) && !a.alreadyImported)
@@ -227,7 +226,15 @@ export default function ImportPets() {
       }).length
     : 0;
 
-  const adoptionUrlMissing = !adoptionUrl.trim() && newAnimalsSelected > 0;
+  // Check if any selected animals are missing adoption URLs from the platform
+  const selectedAnimalsWithoutUrl = animals
+    ? [...selectedAnimals].filter((id) => {
+        const a = animals.find((x) => x.externalId === id);
+        return a && !a.alreadyImported && !a.adoptionUrl;
+      }).length
+    : 0;
+  const needsFallbackUrl = selectedAnimalsWithoutUrl > 0;
+  const adoptionUrlMissing = needsFallbackUrl && !adoptionUrl.trim();
 
   const providerTabs: { key: Provider; label: string; icon: React.ReactNode }[] = [
     { key: "shelterluv", label: "ShelterLuv", icon: <Key className="h-4 w-4" /> },
@@ -409,26 +416,29 @@ export default function ImportPets() {
                   ))}
                 </div>
 
-                {/* Adoption URL + Import button — shown when pets are selected */}
+                {/* Import controls — shown when pets are selected */}
                 {newAnimalsSelected > 0 && (
                   <Card className="border-primary/30 bg-primary/5">
                     <CardContent className="p-4 space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="adoption-url" className="flex items-center gap-2 font-medium">
-                          <LinkIcon className="h-4 w-4" />
-                          Adoption Page URL
-                        </Label>
-                        <Input
-                          id="adoption-url"
-                          placeholder="https://yourrescue.org/adopt"
-                          value={adoptionUrl}
-                          onChange={(e) => setAdoptionUrl(e.target.value)}
-                          className={adoptionUrlMissing ? "border-destructive" : ""}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Where should adopters go to learn more? This URL will be linked on each pet's profile.
-                        </p>
-                      </div>
+                      {/* Adoption URL fallback — only shown when some selected pets don't have URLs from the platform */}
+                      {needsFallbackUrl && (
+                        <div className="space-y-2">
+                          <Label htmlFor="adoption-url" className="flex items-center gap-2 font-medium">
+                            <LinkIcon className="h-4 w-4" />
+                            Adoption Page URL
+                          </Label>
+                          <Input
+                            id="adoption-url"
+                            placeholder="https://yourrescue.org/adopt"
+                            value={adoptionUrl}
+                            onChange={(e) => setAdoptionUrl(e.target.value)}
+                            className={adoptionUrlMissing ? "border-destructive" : ""}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {selectedAnimalsWithoutUrl} of your selected pets {selectedAnimalsWithoutUrl === 1 ? "doesn't" : "don't"} have an adoption URL from the platform. Enter a fallback URL for {selectedAnimalsWithoutUrl === 1 ? "that pet" : "those pets"}.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Pet limit error */}
                       {limitError && (
