@@ -3264,7 +3264,9 @@ export async function registerRoutes(
       if (!providerName) return res.status(400).json({ error: "provider is required" });
       if (!orgId && !apiKey) return res.status(400).json({ error: "orgId or apiKey is required" });
 
-      const provider = getProvider(providerName);
+      // "DEMO" key triggers demo mode for testing
+      const isDemoMode = providerName === "shelterluv" && apiKey && apiKey.toUpperCase() === "DEMO";
+      const provider = getProvider(isDemoMode ? "demo" : providerName);
       const animals = await provider.fetchAnimals(orgId || apiKey);
 
       // Check which ones are already imported for this user's org

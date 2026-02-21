@@ -2,11 +2,13 @@ import type { ImportProvider } from "./types";
 import { petfinderProvider } from "./petfinder";
 import { rescuegroupsProvider } from "./rescuegroups";
 import { shelterluvProvider } from "./shelterluv";
+import { demoProvider } from "./demo";
 
 const providers: Record<string, ImportProvider> = {
   petfinder: petfinderProvider,
   rescuegroups: rescuegroupsProvider,
   shelterluv: shelterluvProvider,
+  demo: demoProvider,
 };
 
 export function getProvider(name: string): ImportProvider {
