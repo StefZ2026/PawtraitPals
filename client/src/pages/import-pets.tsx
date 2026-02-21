@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, getAuthHeaders, queryClient } from "@/lib/queryClient";
 import { ImportAnimalCard } from "@/components/import-animal-card";
 import {
-  Dog, Cat, ArrowLeft, Search, Download, Loader2, Key, Building2
+  Dog, Cat, ArrowLeft, Search, Download, Loader2, Key, Building2, Link as LinkIcon, AlertTriangle
 } from "lucide-react";
 import type { Organization } from "@shared/schema";
 
@@ -54,6 +55,8 @@ export default function ImportPets() {
   const [searchResults, setSearchResults] = useState<NormalizedOrg[] | null>(null);
   const [animals, setAnimals] = useState<NormalizedAnimal[] | null>(null);
   const [isLoadingAnimals, setIsLoadingAnimals] = useState(false);
+  const [adoptionUrl, setAdoptionUrl] = useState("");
+  const [limitError, setLimitError] = useState<string | null>(null);
 
   // Get admin org ID from URL params
   const urlParams = new URLSearchParams(window.location.search);
@@ -96,6 +99,7 @@ export default function ImportPets() {
     setAnimals(null);
     setSelectedAnimals(new Set());
     setSelectedPhotos({});
+    setLimitError(null);
 
     try {
       const headers = await getAuthHeaders();
@@ -122,6 +126,7 @@ export default function ImportPets() {
     setAnimals(null);
     setSelectedAnimals(new Set());
     setSelectedPhotos({});
+    setLimitError(null);
 
     try {
       const headers = await getAuthHeaders();
@@ -153,11 +158,13 @@ export default function ImportPets() {
       }
       return next;
     });
+    setLimitError(null);
   };
 
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!animals) throw new Error("No animals to import");
+      if (!adoptionUrl.trim()) throw new Error("Please enter your adoption page URL before importing.");
 
       const toImport = animals
         .filter((a) => selectedAnimals.has(a.externalId) && !a.alreadyImported)
@@ -169,7 +176,7 @@ export default function ImportPets() {
           age: a.age,
           description: a.description,
           selectedPhotoUrl: selectedPhotos[a.externalId] || a.photos[0] || null,
-          adoptionUrl: a.adoptionUrl,
+          adoptionUrl: a.adoptionUrl || adoptionUrl.trim(),
           isAvailable: a.isAvailable,
           tags: a.tags,
         }));
@@ -179,8 +186,23 @@ export default function ImportPets() {
       const body: any = { provider, animals: toImport };
       if (orgIdParam) body.orgId = parseInt(orgIdParam);
 
-      const res = await apiRequest("POST", "/api/import/pets", body);
-      return res.json();
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/import/pets", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === "pet_limit_exceeded") {
+          setLimitError(data.message);
+          throw new Error(data.message);
+        }
+        throw new Error(data.message || data.error || "Import failed");
+      }
+
+      return data;
     },
     onSuccess: (data) => {
       toast({
@@ -192,7 +214,9 @@ export default function ImportPets() {
       navigate(orgIdParam ? `/dashboard?org=${orgIdParam}` : "/dashboard");
     },
     onError: (error: Error) => {
-      toast({ title: "Import failed", description: error.message, variant: "destructive" });
+      if (!limitError) {
+        toast({ title: "Import failed", description: error.message, variant: "destructive" });
+      }
     },
   });
 
@@ -202,6 +226,8 @@ export default function ImportPets() {
         return a && !a.alreadyImported;
       }).length
     : 0;
+
+  const adoptionUrlMissing = !adoptionUrl.trim() && newAnimalsSelected > 0;
 
   const providerTabs: { key: Provider; label: string; icon: React.ReactNode }[] = [
     { key: "shelterluv", label: "ShelterLuv", icon: <Key className="h-4 w-4" /> },
@@ -248,6 +274,7 @@ export default function ImportPets() {
                 setSelectedOrg(null);
                 setAnimals(null);
                 setSelectedAnimals(new Set());
+                setLimitError(null);
               }}
             >
               {tab.icon} {tab.label}
@@ -284,7 +311,7 @@ export default function ImportPets() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
-                Search {provider === "petfinder" ? "Petfinder" : "RescueGroups"}
+                Search RescueGroups
               </CardTitle>
               <CardDescription>
                 Search for your rescue organization to import your animals.
@@ -299,15 +326,6 @@ export default function ImportPets() {
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="flex-1 min-w-[200px]"
                 />
-                {provider === "petfinder" && (
-                  <Input
-                    placeholder="City, State (optional)"
-                    value={searchLocation}
-                    onChange={(e) => setSearchLocation(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    className="w-48"
-                  />
-                )}
                 <Button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()} className="gap-2 shrink-0">
                   {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                   Search
@@ -365,18 +383,6 @@ export default function ImportPets() {
                   )}
                 </p>
               </div>
-              <Button
-                onClick={() => importMutation.mutate()}
-                disabled={importMutation.isPending || newAnimalsSelected === 0}
-                className="gap-2"
-              >
-                {importMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                Import {newAnimalsSelected} Pet{newAnimalsSelected !== 1 ? "s" : ""}
-              </Button>
             </div>
 
             {animals.length === 0 ? (
@@ -387,20 +393,81 @@ export default function ImportPets() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {animals.map((animal) => (
-                  <ImportAnimalCard
-                    key={animal.externalId}
-                    animal={animal}
-                    selected={selectedAnimals.has(animal.externalId)}
-                    onToggle={() => toggleAnimal(animal.externalId)}
-                    onPhotoSelect={(url) =>
-                      setSelectedPhotos((prev) => ({ ...prev, [animal.externalId]: url }))
-                    }
-                    selectedPhotoUrl={selectedPhotos[animal.externalId] || null}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {animals.map((animal) => (
+                    <ImportAnimalCard
+                      key={animal.externalId}
+                      animal={animal}
+                      selected={selectedAnimals.has(animal.externalId)}
+                      onToggle={() => toggleAnimal(animal.externalId)}
+                      onPhotoSelect={(url) =>
+                        setSelectedPhotos((prev) => ({ ...prev, [animal.externalId]: url }))
+                      }
+                      selectedPhotoUrl={selectedPhotos[animal.externalId] || null}
+                    />
+                  ))}
+                </div>
+
+                {/* Adoption URL + Import button — shown when pets are selected */}
+                {newAnimalsSelected > 0 && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="p-4 space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="adoption-url" className="flex items-center gap-2 font-medium">
+                          <LinkIcon className="h-4 w-4" />
+                          Adoption Page URL
+                        </Label>
+                        <Input
+                          id="adoption-url"
+                          placeholder="https://yourrescue.org/adopt"
+                          value={adoptionUrl}
+                          onChange={(e) => setAdoptionUrl(e.target.value)}
+                          className={adoptionUrlMissing ? "border-destructive" : ""}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Where should adopters go to learn more? This URL will be linked on each pet's profile.
+                        </p>
+                      </div>
+
+                      {/* Pet limit error */}
+                      {limitError && (
+                        <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30">
+                          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                          <div className="text-sm">
+                            <p className="font-medium text-destructive">Pet limit reached</p>
+                            <p className="text-muted-foreground mt-1">{limitError}</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-2"
+                              asChild
+                            >
+                              <Link href={orgIdParam ? `/dashboard?org=${orgIdParam}` : "/dashboard"}>
+                                Manage Your Plan
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      <Button
+                        onClick={() => importMutation.mutate()}
+                        disabled={importMutation.isPending || adoptionUrlMissing || !!limitError}
+                        className="gap-2 w-full"
+                        size="lg"
+                      >
+                        {importMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        Import {newAnimalsSelected} Pet{newAnimalsSelected !== 1 ? "s" : ""}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
             )}
           </div>
         )}

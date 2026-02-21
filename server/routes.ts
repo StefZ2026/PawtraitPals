@@ -3323,6 +3323,36 @@ export async function registerRoutes(
 
       if (!org) return res.status(404).json({ error: "No organization found" });
 
+      // Check plan limits before importing
+      const plan = org.planId ? await storage.getSubscriptionPlan(org.planId) : null;
+      const existingDogs = await storage.getDogsByOrganization(org.id);
+      const currentCount = existingDogs.length;
+      const effectiveLimit = plan?.dogsLimit
+        ? plan.dogsLimit + (org.additionalPetSlots || 0)
+        : null;
+
+      // Count how many are actually new (not already imported)
+      let newCount = 0;
+      for (const animal of animals) {
+        const existing = await storage.findDogByExternalId(animal.externalId, providerName, org.id);
+        if (!existing) newCount++;
+      }
+
+      if (effectiveLimit !== null && currentCount + newCount > effectiveLimit) {
+        const slotsAvailable = Math.max(0, effectiveLimit - currentCount);
+        return res.status(400).json({
+          error: "pet_limit_exceeded",
+          message: `You have ${currentCount} of ${effectiveLimit} pet slots used. You're trying to import ${newCount} new pets but only have ${slotsAvailable} slot${slotsAvailable !== 1 ? "s" : ""} available.`,
+          currentCount,
+          effectiveLimit,
+          newCount,
+          slotsAvailable,
+        });
+      }
+
+      // Fallback adoption URL: use org's website if available
+      const fallbackAdoptionUrl = org.websiteUrl || null;
+
       let imported = 0;
       let skipped = 0;
 
@@ -3345,7 +3375,7 @@ export async function registerRoutes(
           photoBase64 = await downloadPhotoAsBase64(animal.selectedPhotoUrl);
         }
 
-        // Create the dog record
+        // Create the dog record — use org website as adoption URL fallback
         await storage.createDog({
           organizationId: org.id,
           name: animal.name || "Unknown",
@@ -3354,7 +3384,7 @@ export async function registerRoutes(
           age: animal.age || null,
           description: animal.description || null,
           originalPhotoUrl: photoBase64,
-          adoptionUrl: animal.adoptionUrl || null,
+          adoptionUrl: animal.adoptionUrl || fallbackAdoptionUrl,
           isAvailable: animal.isAvailable !== false,
           externalId: animal.externalId,
           externalSource: providerName,
