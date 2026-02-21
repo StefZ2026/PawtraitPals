@@ -23,6 +23,7 @@ import Login from "@/pages/login";
 import Privacy from "@/pages/privacy";
 import Terms from "@/pages/terms";
 import SmsOptIn from "@/pages/sms-opt-in";
+import ImportPets from "@/pages/import-pets";
 
 function Router() {
   return (
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/privacy" component={Privacy} />
       <Route path="/terms" component={Terms} />
       <Route path="/sms-opt-in" component={SmsOptIn} />
+      <Route path="/import" component={ImportPets} />
       <Route component={NotFound} />
     </Switch>
   );

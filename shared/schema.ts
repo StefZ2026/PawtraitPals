@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -79,6 +79,10 @@ export const dogs = pgTable("dogs", {
   originalPhotoUrl: text("original_photo_url"),
   adoptionUrl: text("adoption_url"),
   isAvailable: boolean("is_available").default(true).notNull(),
+  externalId: text("external_id"), // ID from import source (Petfinder, RescueGroups, ShelterLuv)
+  externalSource: text("external_source"), // "petfinder", "rescuegroups", "shelterluv"
+  lastSyncedAt: timestamp("last_synced_at"), // When this record was last imported/refreshed
+  tags: jsonb("tags"), // Array of searchable strings for hashtags/filtering
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

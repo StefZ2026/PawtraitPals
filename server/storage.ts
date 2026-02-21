@@ -46,6 +46,7 @@ export interface IStorage {
   createDog(dog: InsertDog): Promise<Dog>;
   updateDog(id: number, dog: Partial<InsertDog>): Promise<Dog | undefined>;
   deleteDog(id: number): Promise<void>;
+  findDogByExternalId(externalId: string, externalSource: string, orgId: number): Promise<Dog | undefined>;
 
   // Portrait Styles
   getPortraitStyle(id: number): Promise<PortraitStyle | undefined>;
@@ -183,6 +184,17 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDog(id: number): Promise<void> {
     await db.delete(dogs).where(eq(dogs.id, id));
+  }
+
+  async findDogByExternalId(externalId: string, externalSource: string, orgId: number): Promise<Dog | undefined> {
+    const [dog] = await db.select().from(dogs).where(
+      and(
+        eq(dogs.externalId, externalId),
+        eq(dogs.externalSource, externalSource),
+        eq(dogs.organizationId, orgId)
+      )
+    );
+    return dog;
   }
 
   // Portrait Styles

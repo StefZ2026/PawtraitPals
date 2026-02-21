@@ -17,7 +17,7 @@ import { AdminFloatingButton } from "@/components/admin-button";
 import {
   Dog, Cat, Plus, LogOut, Building2, Image, Crown,
   Sparkles, ExternalLink, LayoutDashboard, Shield,
-  ArrowLeft, Heart, Trash2, LogIn, Eye, Upload, X, Settings
+  ArrowLeft, Heart, Trash2, LogIn, Eye, Upload, X, Settings, Download
 } from "lucide-react";
 import { PetLimitModal } from "@/components/pet-limit-modal";
 import { useForm } from "react-hook-form";
@@ -601,12 +601,20 @@ function OrgDashboard({ organization, dogs, dogsLoading, trialDaysRemaining, isA
               />
             </div>
           ) : (
-            <Button className="gap-2" data-testid="button-add-pet" asChild>
-              <Link href={isAdmin ? `/create?org=${organization.id}` : "/create"}>
-                <Plus className="h-4 w-4" />
-                Add New Pet
-              </Link>
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button className="gap-2" data-testid="button-add-pet" asChild>
+                <Link href={isAdmin ? `/create?org=${organization.id}` : "/create"}>
+                  <Plus className="h-4 w-4" />
+                  Add New Pet
+                </Link>
+              </Button>
+              <Button variant="outline" className="gap-2" data-testid="button-import-pets" asChild>
+                <Link href={isAdmin ? `/import?org=${organization.id}` : "/import"}>
+                  <Download className="h-4 w-4" />
+                  Import Pets
+                </Link>
+              </Button>
+            </div>
           )
         ) : (
           <Button className="gap-2" data-testid="button-choose-plan-to-add" asChild>
@@ -733,12 +741,20 @@ function OrgDashboard({ organization, dogs, dogsLoading, trialDaysRemaining, isA
                   : "Select a plan to start adding your rescue pets"}
               </p>
               {hasPlan ? (
-                <Button className="gap-2" asChild>
-                  <Link href={isAdmin ? `/create?org=${organization.id}` : "/create"}>
-                    <Plus className="h-4 w-4" />
-                    Add Your First Pet
-                  </Link>
-                </Button>
+                <div className="flex items-center justify-center gap-3 flex-wrap">
+                  <Button className="gap-2" asChild>
+                    <Link href={isAdmin ? `/create?org=${organization.id}` : "/create"}>
+                      <Plus className="h-4 w-4" />
+                      Add Your First Pet
+                    </Link>
+                  </Button>
+                  <Button variant="outline" className="gap-2" asChild>
+                    <Link href={isAdmin ? `/import?org=${organization.id}` : "/import"}>
+                      <Download className="h-4 w-4" />
+                      Import from Petfinder
+                    </Link>
+                  </Button>
+                </div>
               ) : (
                 <Button className="gap-2" asChild>
                   <Link href={`/choose-plan/${organization.id}`}>
