@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { Organization } from "@shared/schema";
 
-type Provider = "petfinder" | "rescuegroups" | "shelterluv";
+type Provider = "shelterluv" | "rescuegroups";
 
 interface NormalizedOrg {
   externalId: string;
@@ -43,7 +43,7 @@ export default function ImportPets() {
   const { isAuthenticated, isAdmin } = useAuth();
   const { toast } = useToast();
 
-  const [provider, setProvider] = useState<Provider>("petfinder");
+  const [provider, setProvider] = useState<Provider>("shelterluv");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLocation, setSearchLocation] = useState("");
   const [shelterluvKey, setShelterluvKey] = useState("");
@@ -204,9 +204,8 @@ export default function ImportPets() {
     : 0;
 
   const providerTabs: { key: Provider; label: string; icon: React.ReactNode }[] = [
-    { key: "petfinder", label: "Petfinder", icon: <Dog className="h-4 w-4" /> },
-    { key: "rescuegroups", label: "RescueGroups", icon: <Cat className="h-4 w-4" /> },
     { key: "shelterluv", label: "ShelterLuv", icon: <Key className="h-4 w-4" /> },
+    { key: "rescuegroups", label: "RescueGroups", icon: <Cat className="h-4 w-4" /> },
   ];
 
   return (

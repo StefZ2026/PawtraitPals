@@ -751,7 +751,7 @@ function OrgDashboard({ organization, dogs, dogsLoading, trialDaysRemaining, isA
                   <Button variant="outline" className="gap-2" asChild>
                     <Link href={isAdmin ? `/import?org=${organization.id}` : "/import"}>
                       <Download className="h-4 w-4" />
-                      Import from Petfinder
+                      Import Pets
                     </Link>
                   </Button>
                 </div>
