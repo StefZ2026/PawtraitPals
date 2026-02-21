@@ -816,6 +816,9 @@ function OrgDashboard({ organization, dogs, dogsLoading, trialDaysRemaining, isA
                     {dog.isAvailable && (
                       <Badge variant="outline" className="shrink-0">Available</Badge>
                     )}
+                    {!dog.adoptionUrl && (
+                      <Badge variant="outline" className="shrink-0 border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30">Needs URL</Badge>
+                    )}
                     {dog.adoptionUrl && (
                       <a
                         href={dog.adoptionUrl}

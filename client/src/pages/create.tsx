@@ -13,8 +13,9 @@ import { PortraitPreview } from "@/components/portrait-preview";
 import { BreedSelector } from "@/components/breed-selector";
 import { portraitStyles, type StyleOption } from "@/lib/portrait-styles";
 import { validatePetName } from "@shared/content-filter";
-import { ArrowLeft, Dog, Cat, Sparkles, Eye, AlertTriangle, Plus, Shield, Undo2 } from "lucide-react";
+import { ArrowLeft, Dog, Cat, Sparkles, Eye, AlertTriangle, Plus, Shield, Undo2, Link2 } from "lucide-react";
 import { PetLimitModal } from "@/components/pet-limit-modal";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AdminFloatingButton } from "@/components/admin-button";
 import { useAuth } from "@/hooks/use-auth";
@@ -84,6 +85,16 @@ export default function Create() {
 
   const activeView = views.find(v => v.id === activeViewId) || null;
   const generatedImage = activeView?.image || null;
+
+  const [showAdoptionUrlDialog, setShowAdoptionUrlDialog] = useState(false);
+  const [adoptionUrlInput, setAdoptionUrlInput] = useState("");
+
+  // Show adoption URL dialog when editing an imported pet that has no adoption URL
+  useEffect(() => {
+    if (existingDog && loaded && editingDogId && !existingDog.adoptionUrl) {
+      setShowAdoptionUrlDialog(true);
+    }
+  }, [existingDog, loaded, editingDogId]);
 
   const [showLimitModal, setShowLimitModal] = useState(false);
   const targetOrg = orgParam ? adminTargetOrg : myOrg;
@@ -675,6 +686,47 @@ export default function Create() {
         </div>
         )}
       </div>
+
+      {/* Adoption URL required dialog — shown immediately when editing a pet with no URL */}
+      <Dialog open={showAdoptionUrlDialog} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-primary" />
+              Adoption Page URL Needed
+            </DialogTitle>
+            <DialogDescription>
+              Enter the link to {petName ? `${petName}'s` : "this pet's"} page on your rescue's website so adopters can find them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              placeholder="https://yourrescue.org/animals/pet-name"
+              value={adoptionUrlInput}
+              onChange={(e) => setAdoptionUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && adoptionUrlInput.trim()) {
+                  setAdoptionUrl(adoptionUrlInput.trim());
+                  setShowAdoptionUrlDialog(false);
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setAdoptionUrl(adoptionUrlInput.trim());
+                setShowAdoptionUrlDialog(false);
+              }}
+              disabled={!adoptionUrlInput.trim()}
+              className="w-full gap-2"
+            >
+              Save URL
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

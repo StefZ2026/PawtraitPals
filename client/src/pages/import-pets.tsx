@@ -5,14 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, getAuthHeaders, queryClient } from "@/lib/queryClient";
 import { ImportAnimalCard } from "@/components/import-animal-card";
 import {
-  Dog, Cat, ArrowLeft, Search, Download, Loader2, Key, Building2, Link as LinkIcon, AlertTriangle
+  Dog, Cat, ArrowLeft, Search, Download, Loader2, Key, Building2, AlertTriangle
 } from "lucide-react";
 import type { Organization } from "@shared/schema";
 
@@ -55,7 +54,6 @@ export default function ImportPets() {
   const [searchResults, setSearchResults] = useState<NormalizedOrg[] | null>(null);
   const [animals, setAnimals] = useState<NormalizedAnimal[] | null>(null);
   const [isLoadingAnimals, setIsLoadingAnimals] = useState(false);
-  const [adoptionUrl, setAdoptionUrl] = useState("");
   const [limitError, setLimitError] = useState<string | null>(null);
 
   // Get admin org ID from URL params
@@ -175,7 +173,7 @@ export default function ImportPets() {
           age: a.age,
           description: a.description,
           selectedPhotoUrl: selectedPhotos[a.externalId] || a.photos[0] || null,
-          adoptionUrl: a.adoptionUrl || adoptionUrl.trim(),
+          adoptionUrl: null,
           isAvailable: a.isAvailable,
           tags: a.tags,
         }));
@@ -225,16 +223,6 @@ export default function ImportPets() {
         return a && !a.alreadyImported;
       }).length
     : 0;
-
-  // Check if any selected animals are missing adoption URLs from the platform
-  const selectedAnimalsWithoutUrl = animals
-    ? [...selectedAnimals].filter((id) => {
-        const a = animals.find((x) => x.externalId === id);
-        return a && !a.alreadyImported && !a.adoptionUrl;
-      }).length
-    : 0;
-  const needsFallbackUrl = selectedAnimalsWithoutUrl > 0;
-  const adoptionUrlMissing = needsFallbackUrl && !adoptionUrl.trim();
 
   const providerTabs: { key: Provider; label: string; icon: React.ReactNode }[] = [
     { key: "shelterluv", label: "ShelterLuv", icon: <Key className="h-4 w-4" /> },
@@ -420,26 +408,6 @@ export default function ImportPets() {
                 {newAnimalsSelected > 0 && (
                   <Card className="border-primary/30 bg-primary/5">
                     <CardContent className="p-4 space-y-4">
-                      {/* Adoption URL fallback — only shown when some selected pets don't have URLs from the platform */}
-                      {needsFallbackUrl && (
-                        <div className="space-y-2">
-                          <Label htmlFor="adoption-url" className="flex items-center gap-2 font-medium">
-                            <LinkIcon className="h-4 w-4" />
-                            Adoption Page URL
-                          </Label>
-                          <Input
-                            id="adoption-url"
-                            placeholder="https://yourrescue.org/adopt"
-                            value={adoptionUrl}
-                            onChange={(e) => setAdoptionUrl(e.target.value)}
-                            className={adoptionUrlMissing ? "border-destructive" : ""}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {selectedAnimalsWithoutUrl} of your selected pets {selectedAnimalsWithoutUrl === 1 ? "doesn't" : "don't"} have an adoption URL from the platform. Enter a fallback URL for {selectedAnimalsWithoutUrl === 1 ? "that pet" : "those pets"}.
-                          </p>
-                        </div>
-                      )}
-
                       {/* Pet limit error */}
                       {limitError && (
                         <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30">
@@ -463,7 +431,7 @@ export default function ImportPets() {
 
                       <Button
                         onClick={() => importMutation.mutate()}
-                        disabled={importMutation.isPending || adoptionUrlMissing || !!limitError}
+                        disabled={importMutation.isPending || !!limitError}
                         className="gap-2 w-full"
                         size="lg"
                       >

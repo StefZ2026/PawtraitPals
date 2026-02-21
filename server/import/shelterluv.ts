@@ -44,7 +44,7 @@ function normalizeAnimal(animal: any): NormalizedAnimal {
     age: animal.Age || null,
     description: animal.Description || null,
     photos,
-    adoptionUrl: `https://www.shelterluv.com/embed/animal/${animalId}`,
+    adoptionUrl: null,
     isAvailable: (animal.Status || "").toLowerCase() === "available",
     tags: extractTags(animal),
   };

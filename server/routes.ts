@@ -3350,9 +3350,6 @@ export async function registerRoutes(
         });
       }
 
-      // Fallback adoption URL: use org's website if available
-      const fallbackAdoptionUrl = org.websiteUrl || null;
-
       let imported = 0;
       let skipped = 0;
 
@@ -3375,7 +3372,7 @@ export async function registerRoutes(
           photoBase64 = await downloadPhotoAsBase64(animal.selectedPhotoUrl);
         }
 
-        // Create the dog record — use org website as adoption URL fallback
+        // Create the dog record — adoptionUrl will be added later when rescue edits the pet
         await storage.createDog({
           organizationId: org.id,
           name: animal.name || "Unknown",
@@ -3384,7 +3381,7 @@ export async function registerRoutes(
           age: animal.age || null,
           description: animal.description || null,
           originalPhotoUrl: photoBase64,
-          adoptionUrl: animal.adoptionUrl || fallbackAdoptionUrl,
+          adoptionUrl: null,
           isAvailable: animal.isAvailable !== false,
           externalId: animal.externalId,
           externalSource: providerName,
