@@ -60,6 +60,7 @@ export interface IStorage {
   createPortrait(portrait: InsertPortrait): Promise<Portrait>;
   updatePortrait(id: number, portrait: Partial<InsertPortrait>): Promise<Portrait | undefined>;
   selectPortraitForGallery(dogId: number, portraitId: number): Promise<void>;
+  deletePortrait(id: number): Promise<void>;
   incrementPortraitEditCount(portraitId: number): Promise<void>;
   incrementOrgPortraitsUsed(orgId: number): Promise<void>;
   getAccurateCreditsUsed(orgId: number): Promise<{ creditsUsed: number; billingCycleStart: Date | null }>;
@@ -248,6 +249,10 @@ export class DatabaseStorage implements IStorage {
   async updatePortrait(id: number, portrait: Partial<InsertPortrait>): Promise<Portrait | undefined> {
     const [updated] = await db.update(portraits).set(portrait).where(eq(portraits.id, id)).returning();
     return updated;
+  }
+
+  async deletePortrait(id: number): Promise<void> {
+    await db.delete(portraits).where(eq(portraits.id, id));
   }
 
   async selectPortraitForGallery(dogId: number, portraitId: number): Promise<void> {
