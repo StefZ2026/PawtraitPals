@@ -34,20 +34,24 @@ export async function generateImage(prompt: string, sourceImage?: string): Promi
 const FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED — YOU MUST USE IT.
 Study the attached photo carefully. This is the EXACT animal you must depict.
 
-COLOR MATCHING IS THE #1 PRIORITY:
-Look at the EXACT fur/coat color in the reference photo. You must reproduce that PRECISE color — not a "typical" breed color, not a slightly lighter or darker shade, not a more saturated or desaturated version. Match the EXACT hue, saturation, and brightness of this specific animal's coat. If the animal is reddish-brown, it must be reddish-brown — not golden, not tan, not orange. If it has black patches, they must be black — not dark brown. Every color detail in the reference photo must carry through to the portrait EXACTLY as-is. Do NOT let the artistic style, scene lighting, or background colors influence or shift the animal's actual coat color.
+COLOR AND PATTERN MATCHING IS THE #1 PRIORITY:
+Most animals are NOT one uniform color. Study WHERE each color appears on this specific animal's body:
+- Note which areas are lighter vs darker (chest, belly, legs, face, back, ears, tail)
+- Note any two-tone or multi-tone patterns — e.g., white chest with reddish back, dark face with lighter body, tabby stripes, tuxedo markings, brindle patterns
+- Note the EXACT boundaries where one color transitions to another
+You must reproduce the PRECISE color of EACH body area — not a uniform "average" color, not a "typical" breed color, not a slightly different shade. If the chest is white and the back is reddish, the portrait must show a white chest and a reddish back in those same proportions. If there are patches, spots, or gradients, they must appear in the same locations. Do NOT simplify a multi-colored coat into one uniform tone. Do NOT let the artistic style, scene lighting, or background colors influence or shift the animal's actual coat colors.
 
 You MUST also faithfully reproduce THIS SPECIFIC animal's:
 - Face shape, muzzle, and facial structure
 - Ear shape, size, and positioning
-- Fur/coat pattern, markings, and texture (in addition to the exact color above)
+- Fur/coat texture and length
 - Eye color and shape
 - Body size and proportions
 - Any unique distinguishing features (spots, patches, scars, etc.)
 
 DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance — many breeds have wide color variation and this portrait must match THIS individual, not the breed standard. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo. If the style description mentions specific colors or physical features that conflict with the actual animal in the photo, ALWAYS use the animal's REAL appearance from the photo instead.
 
-Now apply the following artistic style while preserving this exact animal's appearance and coloring:
+Now apply the following artistic style while preserving this exact animal's appearance, coloring, and color distribution:
 
 `;
 
