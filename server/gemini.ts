@@ -33,17 +33,21 @@ export async function generateImage(prompt: string, sourceImage?: string): Promi
 
 const FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED — YOU MUST USE IT.
 Study the attached photo carefully. This is the EXACT animal you must depict.
-You MUST faithfully reproduce THIS SPECIFIC animal's:
+
+COLOR MATCHING IS THE #1 PRIORITY:
+Look at the EXACT fur/coat color in the reference photo. You must reproduce that PRECISE color — not a "typical" breed color, not a slightly lighter or darker shade, not a more saturated or desaturated version. Match the EXACT hue, saturation, and brightness of this specific animal's coat. If the animal is reddish-brown, it must be reddish-brown — not golden, not tan, not orange. If it has black patches, they must be black — not dark brown. Every color detail in the reference photo must carry through to the portrait EXACTLY as-is. Do NOT let the artistic style, scene lighting, or background colors influence or shift the animal's actual coat color.
+
+You MUST also faithfully reproduce THIS SPECIFIC animal's:
 - Face shape, muzzle, and facial structure
 - Ear shape, size, and positioning
-- Fur/coat color, pattern, markings, and texture
+- Fur/coat pattern, markings, and texture (in addition to the exact color above)
 - Eye color and shape
 - Body size and proportions
 - Any unique distinguishing features (spots, patches, scars, etc.)
 
-DO NOT substitute a generic or different-looking animal. DO NOT change the animal's coloring, markings, or features to match any breed stereotype. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo. If the style description mentions specific colors or physical features that conflict with the actual animal in the photo, ALWAYS use the animal's REAL appearance from the photo instead.
+DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance — many breeds have wide color variation and this portrait must match THIS individual, not the breed standard. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo. If the style description mentions specific colors or physical features that conflict with the actual animal in the photo, ALWAYS use the animal's REAL appearance from the photo instead.
 
-Now apply the following artistic style while preserving this exact animal's appearance:
+Now apply the following artistic style while preserving this exact animal's appearance and coloring:
 
 `;
 
