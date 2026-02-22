@@ -31,8 +31,11 @@ export async function generateImage(prompt: string, sourceImage?: string): Promi
   return generateTextOnly(prompt);
 }
 
-const FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED — YOU MUST USE IT.
+const FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED — THE PHOTO IS THE GROUND TRUTH.
 Study the attached photo carefully. This is the EXACT animal you must depict.
+
+CRITICAL RULE — PHOTO OVERRIDES TEXT:
+The style description below may mention a breed name (e.g., "Beagle", "Labrador", "Persian cat"). IGNORE any breed name in the text if it does not match what you see in the photo. The PHOTO is the sole authority on what this animal looks like. If the text says "Beagle" but the photo shows a Chow Chow, you MUST depict a Chow Chow. If the text says "Tabby" but the photo shows a Siamese, you MUST depict a Siamese. NEVER generate an animal that matches the text breed instead of the photo — the photo always wins.
 
 COLOR AND PATTERN MATCHING IS THE #1 PRIORITY:
 Most animals are NOT one uniform color. Study WHERE each color appears on this specific animal's body:
@@ -49,7 +52,7 @@ You MUST also faithfully reproduce THIS SPECIFIC animal's:
 - Body size and proportions
 - Any unique distinguishing features (spots, patches, scars, etc.)
 
-DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance — many breeds have wide color variation and this portrait must match THIS individual, not the breed standard. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo. If the style description mentions specific colors or physical features that conflict with the actual animal in the photo, ALWAYS use the animal's REAL appearance from the photo instead.
+DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo.
 
 Now apply the following artistic style while preserving this exact animal's appearance, coloring, and color distribution:
 
