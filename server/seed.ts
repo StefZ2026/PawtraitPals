@@ -74,6 +74,15 @@ export async function seedDatabase() {
     console.log('[migration] stripe_test_mode:', migErr.message);
   }
 
+  // Migration: add consent columns to users table
+  try {
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_accepted_at TIMESTAMP');
+    console.log('[migration] consent columns ready');
+  } catch (migErr: any) {
+    console.log('[migration] consent columns:', migErr.message);
+  }
+
   await seedSubscriptionPlans();
 
   const existingStyles = await db.select().from(portraitStyles);

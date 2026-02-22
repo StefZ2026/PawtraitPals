@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { AccessGate } from "@/components/access-gate";
 import { Footer } from "@/components/footer";
+import { CookieConsent } from "@/components/cookie-consent";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Create from "@/pages/create";
@@ -72,6 +73,7 @@ function App() {
             <Toaster />
             <Router />
             <Footer />
+            <CookieConsent />
           </AccessGate>
         </TooltipProvider>
       </ThemeProvider>

@@ -300,7 +300,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
                 onChange={(e) => setPrivacyConsent(e.target.checked)}
                 className="mt-0.5 rounded border-gray-300"
               />
-              <span>I have read and agree to the Pawtrait Pals <a href="/privacy" target="_blank" className="underline text-primary">Privacy Policy</a>.</span>
+              <span>I have read and agree to the Pawtrait Pals <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline text-primary">Privacy Policy</a>.</span>
             </label>
           </div>
         </DialogContent>
