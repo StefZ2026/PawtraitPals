@@ -14,7 +14,7 @@ export const portraitStyles: StyleOption[] = [
     description: "A dignified portrait in the style of Italian Renaissance masters",
     category: "Classical",
     species: "dog",
-    promptTemplate: "A majestic Renaissance oil painting portrait of a white fluffy {breed} dog wearing ornate noble attire with a velvet collar and golden medallion, dramatic chiaroscuro lighting, rich earth tones, in the style of Leonardo da Vinci and Raphael, museum quality, highly detailed white fur texture"
+    promptTemplate: "A majestic Renaissance oil painting portrait of a {breed} dog wearing ornate noble attire with a velvet collar and golden medallion, dramatic chiaroscuro lighting, rich earth tones, in the style of Leonardo da Vinci and Raphael, museum quality, highly detailed fur texture matching the actual dog's coat"
   },
   {
     id: 25,

@@ -31,11 +31,28 @@ export async function generateImage(prompt: string, sourceImage?: string): Promi
   return generateTextOnly(prompt);
 }
 
+const FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED — YOU MUST USE IT.
+Study the attached photo carefully. This is the EXACT animal you must depict.
+You MUST faithfully reproduce THIS SPECIFIC animal's:
+- Face shape, muzzle, and facial structure
+- Ear shape, size, and positioning
+- Fur/coat color, pattern, markings, and texture
+- Eye color and shape
+- Body size and proportions
+- Any unique distinguishing features (spots, patches, scars, etc.)
+
+DO NOT substitute a generic or different-looking animal. DO NOT change the animal's coloring, markings, or features to match any breed stereotype. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo. If the style description mentions specific colors or physical features that conflict with the actual animal in the photo, ALWAYS use the animal's REAL appearance from the photo instead.
+
+Now apply the following artistic style while preserving this exact animal's appearance:
+
+`;
+
 async function generateWithImage(prompt: string, sourceImage: string): Promise<string | null> {
   const { mimeType, data } = parseBase64(sourceImage);
+  const enhancedPrompt = FIDELITY_PREFIX + prompt;
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-image",
-    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: prompt }] }],
+    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: enhancedPrompt }] }],
     config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
   });
   return extractImageFromResponse(response);
