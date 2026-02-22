@@ -1273,7 +1273,7 @@ export async function registerRoutes(
 
       // Only return full details if the dog belongs to an active org with available status (public gallery)
       const org = dog.organizationId ? await storage.getOrganization(dog.organizationId) : null;
-      if (!org || !org.isActive || dog.status !== "available") {
+      if (!org || !org.isActive || !dog.isAvailable) {
         return res.status(404).json({ error: "Pet not found" });
       }
 
@@ -1438,17 +1438,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting dog:", error);
       res.status(500).json({ error: "Failed to delete pet" });
-    }
-  });
-
-  // Portrait Styles
-  app.get("/api/styles", async (req: Request, res: Response) => {
-    try {
-      const styles = await storage.getAllPortraitStyles();
-      res.json(styles);
-    } catch (error) {
-      console.error("Error fetching styles:", error);
-      res.status(500).json({ error: "Failed to fetch styles" });
     }
   });
 
@@ -2547,7 +2536,7 @@ export async function registerRoutes(
           domain,
           privateKey: privateKey.replace(/\\n/g, '\n'),
           profileKey,
-          redirect: `https://pawtrait-pals.onrender.com/settings?instagram=connected`,
+          redirect: `${process.env.NODE_ENV === 'production' ? 'https://pawtraitpals.com' : 'http://localhost:5000'}/settings?instagram=connected`,
           allowedSocial: ['instagram'],
         }),
       });
@@ -3544,13 +3533,9 @@ export async function registerRoutes(
       const org = await storage.getOrganizationByOwner(userId);
 
       if (org) {
-        // Delete all portraits for org's dogs
-        const dogs = await storage.getDogsByOrganization(org.id);
-        for (const dog of dogs) {
-          const dogPortraits = await storage.getPortraitsByDog(dog.id);
-          for (const portrait of dogPortraits) {
-            await storage.deletePortrait(portrait.id);
-          }
+        // Delete all dogs (portraits cascade via ON DELETE CASCADE)
+        const orgDogs = await storage.getDogsByOrganization(org.id);
+        for (const dog of orgDogs) {
           await storage.deleteDog(dog.id);
         }
         // Delete org
