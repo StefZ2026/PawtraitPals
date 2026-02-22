@@ -197,7 +197,10 @@ export function registerDogRoutes(app: Express): void {
       }
 
       if (dogData.breed !== undefined && !isValidBreed(dogData.breed, dogData.species || dog.species)) {
-        return res.status(400).json({ error: "Please select a valid breed from the list" });
+        return res.status(400).json({
+          error: `"${dogData.breed}" isn't recognized. Please select a breed from the dropdown list.`,
+          code: "invalid_breed",
+        });
       }
 
       if (selectedPortraitId) {

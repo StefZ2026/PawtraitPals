@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { pool } from "../db";
 import { isAuthenticated } from "../auth";
 import { getUserId, getUserEmail, ADMIN_EMAIL } from "./helpers";
+import { normalizeBreed } from "../breeds";
 
 export async function registerImportRoutes(app: Express): Promise<void> {
   const { getProvider, getAvailableProviders, downloadPhotoAsBase64 } = await import("../import/index");
@@ -164,11 +165,15 @@ export async function registerImportRoutes(app: Express): Promise<void> {
           photoBase64 = await downloadPhotoAsBase64(animal.selectedPhotoUrl);
         }
 
+        // Normalize breed name to match our AKC list
+        const animalSpecies = animal.species === "cat" ? "cat" : "dog";
+        const { breed: normalizedBreed } = normalizeBreed(animal.breed, animalSpecies);
+
         await storage.createDog({
           organizationId: org.id,
           name: animal.name || "Unknown",
-          species: animal.species === "cat" ? "cat" : "dog",
-          breed: animal.breed || null,
+          species: animalSpecies,
+          breed: normalizedBreed,
           age: animal.age || null,
           description: animal.description || null,
           originalPhotoUrl: photoBase64,
