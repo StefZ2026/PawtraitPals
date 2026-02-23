@@ -3,7 +3,6 @@ import type { InsertOrganization } from "@shared/schema";
 import { z } from "zod";
 import { storage } from "../storage";
 import { isAuthenticated } from "../auth";
-import { stripeService } from "../stripeService";
 import { getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal } from "../stripeClient";
 import { containsInappropriateLanguage } from "@shared/content-filter";
 import { isValidBreed } from "../breeds";

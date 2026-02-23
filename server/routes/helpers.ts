@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import type { InsertDog } from "@shared/schema";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import { getStripeClient } from "../stripeClient";

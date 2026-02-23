@@ -1,6 +1,6 @@
 import { storage } from "../storage";
 import { getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal } from "../stripeClient";
-import { isTrialExpired, isWithinTrialWindow, getFreeTrial, revertToFreeTrial, handleCancellation, canStartFreeTrial, markFreeTrialUsed } from "../subscription";
+import { isWithinTrialWindow, getFreeTrial, revertToFreeTrial, handleCancellation, markFreeTrialUsed } from "../subscription";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 
