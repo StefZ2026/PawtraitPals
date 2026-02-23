@@ -2870,9 +2870,46 @@ function registerDogRoutes(app2) {
 
 // server/gemini.ts
 var import_genai = require("@google/genai");
+
+// server/semaphore.ts
+var Semaphore = class {
+  constructor(maxConcurrent) {
+    this.maxConcurrent = maxConcurrent;
+  }
+  queue = [];
+  active = 0;
+  async acquire() {
+    if (this.active < this.maxConcurrent) {
+      this.active++;
+      return;
+    }
+    return new Promise((resolve) => {
+      this.queue.push(() => {
+        this.active++;
+        resolve();
+      });
+    });
+  }
+  release() {
+    this.active--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+  async run(fn) {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+};
+
+// server/gemini.ts
 var ai = new import_genai.GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY
 });
+var geminiSemaphore = new Semaphore(2);
 function extractImageFromResponse(response) {
   const part = response.candidates?.[0]?.content?.parts?.find(
     (p) => p.inlineData
@@ -2925,45 +2962,52 @@ Now apply the following artistic style while preserving this exact animal's appe
 async function generateWithImage(prompt, sourceImage) {
   const { mimeType, data } = parseBase64(sourceImage);
   const enhancedPrompt = FIDELITY_PREFIX + prompt;
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-image",
-    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: enhancedPrompt }] }],
-    config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+  return geminiSemaphore.run(async () => {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: enhancedPrompt }] }],
+      config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+    });
+    return extractImageFromResponse(response);
   });
-  return extractImageFromResponse(response);
 }
 async function generateTextOnly(prompt) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+    const result = await geminiSemaphore.run(async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+      });
+      return extractImageFromResponse(response);
     });
-    const result = extractImageFromResponse(response);
     if (result) return result;
   }
   throw new Error("Failed to generate image after retries");
 }
 async function editImage(currentImage, editPrompt) {
   const { mimeType, data } = parseBase64(currentImage);
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-image",
-    contents: [{
-      role: "user",
-      parts: [
-        { inlineData: { mimeType, data } },
-        { text: `Edit this image: ${editPrompt}. Keep the same overall style and subject, just apply the requested modifications.` }
-      ]
-    }],
-    config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+  return geminiSemaphore.run(async () => {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data } },
+          { text: `Edit this image: ${editPrompt}. Keep the same overall style and subject, just apply the requested modifications.` }
+        ]
+      }],
+      config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+    });
+    const result = extractImageFromResponse(response);
+    if (!result) throw new Error("Failed to edit image");
+    return result;
   });
-  const result = extractImageFromResponse(response);
-  if (!result) throw new Error("Failed to edit image");
-  return result;
 }
 
 // server/generate-mockups.ts
 var import_sharp = __toESM(require("sharp"), 1);
+import_sharp.default.cache(false);
 var WIDTH = 1200;
 var HEIGHT = 630;
 var CREAM_BG = { r: 253, g: 250, b: 245 };
@@ -6326,6 +6370,23 @@ function log(message, source = "express") {
   });
   console.log(`${formattedTime} [${source}] ${message}`);
 }
+function sanitizeLogPayload(obj) {
+  if (typeof obj === "string") {
+    if (obj.length > 500 && obj.startsWith("data:image/")) {
+      return `[base64 image, ${Math.round(obj.length / 1024)}kb]`;
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) return obj.map(sanitizeLogPayload);
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = sanitizeLogPayload(v);
+    }
+    return out;
+  }
+  return obj;
+}
 app.use((req, res, next) => {
   const start = Date.now();
   const path5 = req.path;
@@ -6340,7 +6401,7 @@ app.use((req, res, next) => {
     if (path5.startsWith("/api")) {
       let logLine = `${req.method} ${path5} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        logLine += ` :: ${JSON.stringify(sanitizeLogPayload(capturedJsonResponse))}`;
       }
       log(logLine);
     }
