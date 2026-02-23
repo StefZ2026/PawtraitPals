@@ -1,12 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "wouter";
-import { Heart, Palette, Share2, Sparkles, Dog, Cat, Building2, LogOut, LayoutDashboard, LayoutGrid } from "lucide-react";
+import { Heart, Palette, Share2, Sparkles, Dog, Cat, Building2, LogOut, LayoutDashboard, LayoutGrid, Menu } from "lucide-react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export default function Home() {
   const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="min-h-screen">
@@ -16,7 +19,8 @@ export default function Home() {
             <span className="flex items-center gap-0.5"><Dog className="h-6 w-6" /><Cat className="h-6 w-6" /></span>
             Pawtrait Pals
           </Link>
-          <nav className="flex items-center gap-2">
+          {/* Desktop nav */}
+          <nav className="hidden sm:flex items-center gap-2">
             <Button variant="ghost" data-testid="link-gallery" asChild>
               <Link href="/gallery">Gallery</Link>
             </Button>
@@ -35,9 +39,9 @@ export default function Home() {
                     <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
                     <AvatarFallback>{user?.firstName?.[0] || user?.email?.[0] || "U"}</AvatarFallback>
                   </Avatar>
-                    <Button variant="ghost" size="icon" data-testid="button-logout" onClick={() => logout()} disabled={isLoggingOut}>
-                      <LogOut className="h-4 w-4" />
-                    </Button>
+                  <Button variant="ghost" size="icon" data-testid="button-logout" onClick={() => logout()} disabled={isLoggingOut}>
+                    <LogOut className="h-4 w-4" />
+                  </Button>
                 </div>
               </>
             ) : (
@@ -51,6 +55,47 @@ export default function Home() {
               </>
             )}
           </nav>
+          {/* Mobile hamburger */}
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Open menu">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-64 pt-12">
+              <nav className="flex flex-col gap-2">
+                <Button variant="ghost" className="justify-start" asChild>
+                  <Link href="/gallery" onClick={() => setMobileOpen(false)}>Gallery</Link>
+                </Button>
+                <Button variant="ghost" className="justify-start" asChild>
+                  <Link href="/styles" onClick={() => setMobileOpen(false)}>Styles</Link>
+                </Button>
+                {isAuthenticated ? (
+                  <>
+                    <Button variant="ghost" className="justify-start gap-2" asChild>
+                      <Link href="/dashboard" onClick={() => setMobileOpen(false)}>
+                        <LayoutDashboard className="h-4 w-4" />
+                        Dashboard
+                      </Link>
+                    </Button>
+                    <Button variant="ghost" className="justify-start gap-2" onClick={() => { logout(); setMobileOpen(false); }} disabled={isLoggingOut}>
+                      <LogOut className="h-4 w-4" />
+                      Log Out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <a href="/login" onClick={() => setMobileOpen(false)}>
+                      <Button variant="ghost" className="w-full justify-start">Log In</Button>
+                    </a>
+                    <a href="/login" onClick={() => setMobileOpen(false)}>
+                      <Button className="w-full">Get Started</Button>
+                    </a>
+                  </>
+                )}
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 

@@ -2429,6 +2429,201 @@ function isValidBreed(breed, species) {
   if (species === "dog") return validDogBreeds.has(breed);
   return validDogBreeds.has(breed) || validCatBreeds.has(breed);
 }
+var breedAliases = {
+  // Dogs — common external names
+  "pit bull": "American Staffordshire Terrier",
+  "pit bull terrier": "American Staffordshire Terrier",
+  "american pit bull terrier": "American Staffordshire Terrier",
+  "pitbull": "American Staffordshire Terrier",
+  "apbt": "American Staffordshire Terrier",
+  "am staff": "American Staffordshire Terrier",
+  "amstaff": "American Staffordshire Terrier",
+  "staffie": "Staffordshire Bull Terrier",
+  "staffy": "Staffordshire Bull Terrier",
+  "lab": "Labrador Retriever",
+  "labrador": "Labrador Retriever",
+  "yellow lab": "Labrador Retriever",
+  "black lab": "Labrador Retriever",
+  "chocolate lab": "Labrador Retriever",
+  "golden": "Golden Retriever",
+  "shepherd": "German Shepherd Dog",
+  "german shepherd": "German Shepherd Dog",
+  "gsd": "German Shepherd Dog",
+  "husky": "Siberian Husky",
+  "malamute": "Alaskan Malamute",
+  "cattle dog": "Australian Cattle Dog",
+  "blue heeler": "Australian Cattle Dog",
+  "red heeler": "Australian Cattle Dog",
+  "heeler": "Australian Cattle Dog",
+  "aussie": "Australian Shepherd",
+  "mini aussie": "Miniature American Shepherd",
+  "miniature australian shepherd": "Miniature American Shepherd",
+  "corgi": "Pembroke Welsh Corgi",
+  "pembroke corgi": "Pembroke Welsh Corgi",
+  "cardigan corgi": "Cardigan Welsh Corgi",
+  "poodle (standard)": "Poodle",
+  "standard poodle": "Poodle",
+  "miniature poodle": "Poodle",
+  "toy poodle": "Poodle",
+  "doxie": "Dachshund",
+  "dachshund (standard)": "Dachshund",
+  "dachshund (miniature)": "Dachshund",
+  "wiener dog": "Dachshund",
+  "weiner dog": "Dachshund",
+  "dobie": "Doberman Pinscher",
+  "doberman": "Doberman Pinscher",
+  "great pyr": "Great Pyrenees",
+  "pyrenees": "Great Pyrenees",
+  "pyr": "Great Pyrenees",
+  "berner": "Bernese Mountain Dog",
+  "bernese": "Bernese Mountain Dog",
+  "jack russell": "Russell Terrier",
+  "jack russell terrier": "Russell Terrier",
+  "jrt": "Russell Terrier",
+  "yorkie": "Yorkshire Terrier",
+  "shih-tzu": "Shih Tzu",
+  "shihtzu": "Shih Tzu",
+  "frenchie": "French Bulldog",
+  "french bully": "French Bulldog",
+  "english bulldog": "Bulldog",
+  "olde english bulldog": "Bulldog",
+  "olde english bulldogge": "Bulldog",
+  "american bully": "American Bulldog",
+  "schnauzer": "Standard Schnauzer",
+  "schnauzer (standard)": "Standard Schnauzer",
+  "schnauzer (miniature)": "Miniature Schnauzer",
+  "schnauzer (giant)": "Giant Schnauzer",
+  "mini schnauzer": "Miniature Schnauzer",
+  "shar pei": "Chinese Shar-Pei",
+  "shar-pei": "Chinese Shar-Pei",
+  "sharpei": "Chinese Shar-Pei",
+  "st. bernard": "Saint Bernard",
+  "st bernard": "Saint Bernard",
+  "wheaten": "Soft Coated Wheaten Terrier",
+  "wheaten terrier": "Soft Coated Wheaten Terrier",
+  "westie": "West Highland White Terrier",
+  "west highland terrier": "West Highland White Terrier",
+  "scottie": "Scottish Terrier",
+  "pom": "Pomeranian",
+  "king charles spaniel": "Cavalier King Charles Spaniel",
+  "cavalier": "Cavalier King Charles Spaniel",
+  "ckcs": "Cavalier King Charles Spaniel",
+  "cocker": "Cocker Spaniel",
+  "springer spaniel": "English Springer Spaniel",
+  "springer": "English Springer Spaniel",
+  "english springer": "English Springer Spaniel",
+  "welsh corgi": "Pembroke Welsh Corgi",
+  "sheltie": "Shetland Sheepdog",
+  "newf": "Newfoundland",
+  "newfie": "Newfoundland",
+  "dane": "Great Dane",
+  "ridgeback": "Rhodesian Ridgeback",
+  "rhodesian": "Rhodesian Ridgeback",
+  "weimeraner": "Weimaraner",
+  "pointer (german shorthaired)": "German Shorthaired Pointer",
+  "coonhound": "Black and Tan Coonhound",
+  "plott": "Plott Hound",
+  "treeing walker": "Treeing Walker Coonhound",
+  "mountain cur": "Mixed Breed",
+  "feist": "Mixed Breed",
+  "hound": "Mixed Breed",
+  "terrier": "Mixed Breed",
+  "spaniel": "Mixed Breed",
+  "retriever": "Mixed Breed",
+  "cur": "Mixed Breed",
+  "mutt": "Mixed Breed",
+  "mixed": "Mixed Breed",
+  "mixed breed": "Mixed Breed",
+  // Cats — common external names
+  "domestic shorthair": "American Shorthair",
+  "domestic short hair": "American Shorthair",
+  "dsh": "American Shorthair",
+  "domestic mediumhair": "American Shorthair",
+  "domestic medium hair": "American Shorthair",
+  "dmh": "American Shorthair",
+  "domestic longhair": "American Shorthair",
+  "domestic long hair": "American Shorthair",
+  "dlh": "American Shorthair",
+  "tabby": "American Shorthair",
+  "tuxedo": "American Shorthair",
+  "calico": "American Shorthair",
+  "tortoiseshell": "American Shorthair",
+  "tortie": "American Shorthair",
+  "orange tabby": "American Shorthair",
+  "gray tabby": "American Shorthair",
+  "brown tabby": "American Shorthair",
+  "black cat": "American Shorthair",
+  "snowshoe": "Siamese",
+  "flame point": "Siamese",
+  "lynx point": "Siamese",
+  "himalayan": "Persian",
+  "munchkin": "Mixed Breed",
+  "polydactyl": "Mixed Breed"
+};
+var dogBreedLower = /* @__PURE__ */ new Map();
+var catBreedLower = /* @__PURE__ */ new Map();
+for (const b of dogBreeds) {
+  dogBreedLower.set(b.toLowerCase(), b);
+  dogBreedLower.set(`${b.toLowerCase()} mix`, `${b} Mix`);
+}
+for (const b of catBreeds) {
+  catBreedLower.set(b.toLowerCase(), b);
+  catBreedLower.set(`${b.toLowerCase()} mix`, `${b} Mix`);
+}
+function normalizeBreed(breed, species) {
+  if (!breed || !breed.trim()) return { breed: null, matched: false };
+  const trimmed = breed.trim();
+  const lower = trimmed.toLowerCase();
+  if (isValidBreed(trimmed, species)) {
+    return { breed: trimmed, matched: true };
+  }
+  const breedMap = species === "cat" ? catBreedLower : species === "dog" ? dogBreedLower : null;
+  if (breedMap) {
+    const found = breedMap.get(lower);
+    if (found) return { breed: found, matched: true };
+  } else {
+    const foundDog = dogBreedLower.get(lower);
+    if (foundDog) return { breed: foundDog, matched: true };
+    const foundCat = catBreedLower.get(lower);
+    if (foundCat) return { breed: foundCat, matched: true };
+  }
+  const isMix = /\s+mix$/i.test(lower);
+  const baseLower = isMix ? lower.replace(/\s+mix$/i, "").trim() : lower;
+  const aliased = breedAliases[baseLower];
+  if (aliased) {
+    const result = isMix && aliased !== "Mixed Breed" ? `${aliased} Mix` : aliased;
+    return { breed: result, matched: true };
+  }
+  const allBreeds = species === "cat" ? catBreeds : species === "dog" ? dogBreeds : [...dogBreeds, ...catBreeds];
+  for (const b of allBreeds) {
+    const bLower = b.toLowerCase();
+    if (bLower.includes(baseLower) || baseLower.includes(bLower)) {
+      const result = isMix ? `${b} Mix` : b;
+      return { breed: result, matched: true };
+    }
+  }
+  const inputWords = new Set(baseLower.split(/\s+/).filter((w) => w.length > 2));
+  if (inputWords.size > 0) {
+    let bestBreed = "";
+    let bestScore = 0;
+    for (const b of allBreeds) {
+      const bWords = b.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+      let score = 0;
+      for (const w of bWords) {
+        if (inputWords.has(w)) score++;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestBreed = b;
+      }
+    }
+    if (bestScore > 0) {
+      const result = isMix ? `${bestBreed} Mix` : bestBreed;
+      return { breed: result, matched: true };
+    }
+  }
+  return { breed: trimmed, matched: false };
+}
 
 // server/routes/dogs.ts
 function registerDogRoutes(app2) {
@@ -2455,7 +2650,15 @@ function registerDogRoutes(app2) {
       const visibleDogs = dogsWithPortraits.filter(
         (dog) => dog.isAvailable && (isRealImage(dog.portrait?.generatedImageUrl) || isRealImage(dog.originalPhotoUrl))
       );
-      res.json(visibleDogs);
+      const limitParam = req.query.limit;
+      const limit = limitParam !== void 0 ? parseInt(limitParam) : 24;
+      const offset = parseInt(req.query.offset) || 0;
+      res.setHeader("X-Total-Count", visibleDogs.length.toString());
+      if (limit > 0) {
+        res.json(visibleDogs.slice(offset, offset + limit));
+      } else {
+        res.json(visibleDogs);
+      }
     } catch (error) {
       console.error("Error fetching dogs:", error);
       res.status(500).json({ error: "Failed to fetch dogs" });
@@ -2590,7 +2793,10 @@ function registerDogRoutes(app2) {
         return res.status(400).json({ error: "Please choose a family-friendly name" });
       }
       if (dogData.breed !== void 0 && !isValidBreed(dogData.breed, dogData.species || dog.species)) {
-        return res.status(400).json({ error: "Please select a valid breed from the list" });
+        return res.status(400).json({
+          error: `"${dogData.breed}" isn't recognized. Please select a breed from the dropdown list.`,
+          code: "invalid_breed"
+        });
       }
       if (selectedPortraitId) {
         const portrait = await storage.getPortrait(selectedPortraitId);
@@ -2690,11 +2896,38 @@ async function generateImage(prompt, sourceImage) {
   }
   return generateTextOnly(prompt);
 }
+var FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED \u2014 THE PHOTO IS THE GROUND TRUTH.
+Study the attached photo carefully. This is the EXACT animal you must depict.
+
+CRITICAL RULE \u2014 PHOTO OVERRIDES TEXT:
+The style description below may mention a breed name (e.g., "Beagle", "Labrador", "Persian cat"). IGNORE any breed name in the text if it does not match what you see in the photo. The PHOTO is the sole authority on what this animal looks like. If the text says "Beagle" but the photo shows a Chow Chow, you MUST depict a Chow Chow. If the text says "Tabby" but the photo shows a Siamese, you MUST depict a Siamese. NEVER generate an animal that matches the text breed instead of the photo \u2014 the photo always wins.
+
+COLOR AND PATTERN MATCHING IS THE #1 PRIORITY:
+Most animals are NOT one uniform color. Study WHERE each color appears on this specific animal's body:
+- Note which areas are lighter vs darker (chest, belly, legs, face, back, ears, tail)
+- Note any two-tone or multi-tone patterns \u2014 e.g., white chest with reddish back, dark face with lighter body, tabby stripes, tuxedo markings, brindle patterns
+- Note the EXACT boundaries where one color transitions to another
+You must reproduce the PRECISE color of EACH body area \u2014 not a uniform "average" color, not a "typical" breed color, not a slightly different shade. If the chest is white and the back is reddish, the portrait must show a white chest and a reddish back in those same proportions. If there are patches, spots, or gradients, they must appear in the same locations. Do NOT simplify a multi-colored coat into one uniform tone. Do NOT let the artistic style, scene lighting, or background colors influence or shift the animal's actual coat colors.
+
+You MUST also faithfully reproduce THIS SPECIFIC animal's:
+- Face shape, muzzle, and facial structure
+- Ear shape, size, and positioning
+- Fur/coat texture and length
+- Eye color and shape
+- Body size and proportions
+- Any unique distinguishing features (spots, patches, scars, etc.)
+
+DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo.
+
+Now apply the following artistic style while preserving this exact animal's appearance, coloring, and color distribution:
+
+`;
 async function generateWithImage(prompt, sourceImage) {
   const { mimeType, data } = parseBase64(sourceImage);
+  const enhancedPrompt = FIDELITY_PREFIX + prompt;
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-image",
-    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: prompt }] }],
+    contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: enhancedPrompt }] }],
     config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
   });
   return extractImageFromResponse(response);
@@ -5132,11 +5365,13 @@ async function registerImportRoutes(app2) {
         if (animal.selectedPhotoUrl) {
           photoBase64 = await downloadPhotoAsBase642(animal.selectedPhotoUrl);
         }
+        const animalSpecies = animal.species === "cat" ? "cat" : "dog";
+        const { breed: normalizedBreed } = normalizeBreed(animal.breed, animalSpecies);
         await storage.createDog({
           organizationId: org.id,
           name: animal.name || "Unknown",
-          species: animal.species === "cat" ? "cat" : "dog",
-          breed: animal.breed || null,
+          species: animalSpecies,
+          breed: normalizedBreed,
           age: animal.age || null,
           description: animal.description || null,
           originalPhotoUrl: photoBase64,
@@ -5308,7 +5543,7 @@ var portraitStyles2 = [
     description: "A dignified portrait in the style of Italian Renaissance masters",
     category: "Classical",
     species: "dog",
-    promptTemplate: "A majestic Renaissance oil painting portrait of a white fluffy {breed} dog wearing ornate noble attire with a velvet collar and golden medallion, dramatic chiaroscuro lighting, rich earth tones, in the style of Leonardo da Vinci and Raphael, museum quality, highly detailed white fur texture"
+    promptTemplate: "A majestic Renaissance oil painting portrait of a {breed} dog wearing ornate noble attire with a velvet collar and golden medallion, dramatic chiaroscuro lighting, rich earth tones, in the style of Leonardo da Vinci and Raphael, museum quality, highly detailed fur texture matching the actual dog's coat"
   },
   {
     id: 25,

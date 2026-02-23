@@ -37,7 +37,17 @@ export function registerDogRoutes(app: Express): void {
         dog.isAvailable && (isRealImage(dog.portrait?.generatedImageUrl) || isRealImage(dog.originalPhotoUrl))
       );
 
-      res.json(visibleDogs);
+      // Pagination: ?limit=N&offset=N (default limit=24, use limit=0 for all)
+      const limitParam = req.query.limit as string | undefined;
+      const limit = limitParam !== undefined ? parseInt(limitParam) : 24;
+      const offset = parseInt(req.query.offset as string) || 0;
+      res.setHeader("X-Total-Count", visibleDogs.length.toString());
+
+      if (limit > 0) {
+        res.json(visibleDogs.slice(offset, offset + limit));
+      } else {
+        res.json(visibleDogs);
+      }
     } catch (error) {
       console.error("Error fetching dogs:", error);
       res.status(500).json({ error: "Failed to fetch dogs" });

@@ -502,11 +502,11 @@ export default function Create() {
                   About This {effectiveSpecies === "cat" ? "Kitty" : "Pup"}
                 </h2>
                 <div className="grid sm:grid-cols-3 gap-3">
-                  <Input placeholder="Name *" value={petName} onChange={(e) => setPetName(e.target.value)} data-testid="input-pet-name" />
+                  <Input placeholder="Name *" aria-label="Pet name" value={petName} onChange={(e) => setPetName(e.target.value)} data-testid="input-pet-name" />
                   <BreedSelector species={effectiveSpecies} value={petBreed} onChange={setPetBreed} />
-                  <Input placeholder="Age (optional)" value={petAge} onChange={(e) => setPetAge(e.target.value)} data-testid="input-pet-age" />
+                  <Input placeholder="Age (optional)" aria-label="Pet age" value={petAge} onChange={(e) => setPetAge(e.target.value)} data-testid="input-pet-age" />
                 </div>
-                <Input placeholder="Adoption page URL *" value={adoptionUrl} onChange={(e) => setAdoptionUrl(e.target.value)} data-testid="input-adoption-url" />
+                <Input placeholder="Adoption page URL *" aria-label="Adoption page URL" value={adoptionUrl} onChange={(e) => setAdoptionUrl(e.target.value)} data-testid="input-adoption-url" />
                 <Textarea
                   placeholder="Tell people about this pet — personality, quirks, likes... (optional)"
                   value={petDescription}
