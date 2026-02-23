@@ -1364,6 +1364,45 @@ async function markFreeTrialUsed(orgId) {
   await storage.updateOrganization(orgId, { hasUsedFreeTrial: true });
 }
 
+// server/supabase-storage.ts
+var SUPABASE_URL = process.env.SUPABASE_URL;
+var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+async function uploadToStorage(base64DataUri, bucket, filename) {
+  const match = base64DataUri.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) throw new Error("Invalid base64 data URI");
+  const contentType = match[1];
+  const buffer = Buffer.from(match[2], "base64");
+  const res = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/${bucket}/${filename}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": contentType,
+        "x-upsert": "true"
+      },
+      body: buffer
+    }
+  );
+  if (!res.ok) {
+    const text2 = await res.text();
+    throw new Error(`Storage upload failed (${res.status}): ${text2}`);
+  }
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${filename}`;
+}
+async function fetchImageAsBuffer(urlOrDataUri) {
+  if (urlOrDataUri.startsWith("data:")) {
+    const base64Data = urlOrDataUri.replace(/^data:image\/\w+;base64,/, "");
+    return Buffer.from(base64Data, "base64");
+  }
+  const res = await fetch(urlOrDataUri);
+  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+function isDataUri(value) {
+  return value.startsWith("data:");
+}
+
 // server/routes/helpers.ts
 var ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 var MAX_ADDITIONAL_SLOTS = 5;
@@ -1515,23 +1554,41 @@ async function checkDogLimit(orgId) {
   return null;
 }
 async function createDogWithPortrait(dogData, orgId, originalPhotoUrl, generatedPortraitUrl, styleId) {
+  let photoUrl = originalPhotoUrl;
+  if (photoUrl && isDataUri(photoUrl)) {
+    try {
+      const fname = `dog-photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      photoUrl = await uploadToStorage(photoUrl, "originals", fname);
+    } catch (err) {
+      console.error("[storage-upload] Dog photo upload failed, using base64 fallback:", err);
+    }
+  }
+  let portraitUrl = generatedPortraitUrl;
+  if (portraitUrl && isDataUri(portraitUrl)) {
+    try {
+      const fname = `portrait-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+      portraitUrl = await uploadToStorage(portraitUrl, "portraits", fname);
+    } catch (err) {
+      console.error("[storage-upload] Portrait upload failed, using base64 fallback:", err);
+    }
+  }
   const dog = await storage.createDog({
     ...dogData,
-    originalPhotoUrl,
+    originalPhotoUrl: photoUrl,
     organizationId: orgId
   });
-  if (generatedPortraitUrl && styleId) {
+  if (portraitUrl && styleId) {
     const existingPortrait = await storage.getPortraitByDogAndStyle(dog.id, styleId);
     if (!existingPortrait) {
       await storage.createPortrait({
         dogId: dog.id,
         styleId,
-        generatedImageUrl: generatedPortraitUrl,
+        generatedImageUrl: portraitUrl,
         isSelected: true
       });
       await storage.incrementOrgPortraitsUsed(orgId);
     } else {
-      await storage.updatePortrait(existingPortrait.id, { generatedImageUrl: generatedPortraitUrl });
+      await storage.updatePortrait(existingPortrait.id, { generatedImageUrl: portraitUrl });
     }
   }
   return dog;
@@ -3064,10 +3121,6 @@ function pillSvg(text2, fontSize, bgColor, textColor, paddingX, paddingY) {
   </svg>`;
   return { svg: Buffer.from(svg), width, height };
 }
-async function extractImageFromDataUri(dataUri) {
-  const base64Data = dataUri.replace(/^data:image\/\w+;base64,/, "");
-  return Buffer.from(base64Data, "base64");
-}
 async function resizeToFit(imageBuffer, maxW, maxH) {
   return (0, import_sharp.default)(imageBuffer).resize(maxW, maxH, { fit: "cover", position: "center" }).png().toBuffer();
 }
@@ -3087,7 +3140,7 @@ async function generateShowcaseMockup(orgId) {
     const portrait = await storage.getSelectedPortraitByDog(dog.id);
     if (portrait && portrait.generatedImageUrl) {
       try {
-        const buf = await extractImageFromDataUri(portrait.generatedImageUrl);
+        const buf = await fetchImageAsBuffer(portrait.generatedImageUrl);
         dogsWithPortraits.push({
           name: dog.name,
           breed: dog.breed || "Unknown",
@@ -3111,7 +3164,7 @@ async function generateShowcaseMockup(orgId) {
   let orgLogoWidth = 0;
   if (org.logoUrl) {
     try {
-      const orgLogoBuf = await extractImageFromDataUri(org.logoUrl);
+      const orgLogoBuf = await fetchImageAsBuffer(org.logoUrl);
       const orgLogo = await makeRoundedImage(orgLogoBuf, orgLogoSize, orgLogoSize, 8);
       composites.push({ input: orgLogo, top: 18, left: 30 });
       orgLogoWidth = orgLogoSize + 14;
@@ -3154,7 +3207,7 @@ async function generatePawfileMockup(dogId) {
   if (!org) throw new Error("Organization not found");
   const portrait = await storage.getSelectedPortraitByDog(dog.id);
   if (!portrait || !portrait.generatedImageUrl) throw new Error("No portrait found");
-  const portraitBuffer = await extractImageFromDataUri(portrait.generatedImageUrl);
+  const portraitBuffer = await fetchImageAsBuffer(portrait.generatedImageUrl);
   const composites = [];
   const bg = await (0, import_sharp.default)({
     create: { width: WIDTH, height: HEIGHT, channels: 4, background: CREAM_BG }
@@ -3171,7 +3224,7 @@ async function generatePawfileMockup(dogId) {
   const orgLogoSize = 60;
   if (org.logoUrl) {
     try {
-      const orgLogoBuf = await extractImageFromDataUri(org.logoUrl);
+      const orgLogoBuf = await fetchImageAsBuffer(org.logoUrl);
       const orgLogo = await makeRoundedImage(orgLogoBuf, orgLogoSize, orgLogoSize, 8);
       composites.push({ input: orgLogo, top: 20, left: WIDTH - orgLogoSize - 30 });
     } catch (e) {
@@ -3381,7 +3434,14 @@ function registerPortraitRoutes(app2) {
           }
         }
       }
-      const generatedImage = await generateImage(sanitizedPrompt, originalImage || void 0);
+      const generatedImageRaw = await generateImage(sanitizedPrompt, originalImage || void 0);
+      let generatedImage = generatedImageRaw;
+      try {
+        const fname = `portrait-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        generatedImage = await uploadToStorage(generatedImageRaw, "portraits", fname);
+      } catch (err) {
+        console.error("[storage-upload] Portrait upload failed, using base64 fallback:", err);
+      }
       let portraitRecord = existingPortrait;
       if (dogId && styleId) {
         const parsedDogId = parseInt(dogId);
@@ -3451,7 +3511,19 @@ function registerPortraitRoutes(app2) {
           });
         }
       }
-      const editedImage = await editImage(currentImage, sanitizedEditPrompt);
+      let imageForEdit = currentImage;
+      if (!isDataUri(currentImage)) {
+        const buf = await fetchImageAsBuffer(currentImage);
+        imageForEdit = `data:image/png;base64,${buf.toString("base64")}`;
+      }
+      const editedImageRaw = await editImage(imageForEdit, sanitizedEditPrompt);
+      let editedImage = editedImageRaw;
+      try {
+        const fname = `portrait-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        editedImage = await uploadToStorage(editedImageRaw, "portraits", fname);
+      } catch (err) {
+        console.error("[storage-upload] Edited portrait upload failed, using base64 fallback:", err);
+      }
       let editCount = null;
       if (portraitId) {
         const existing = await storage.getPortrait(parseInt(portraitId));
@@ -5128,7 +5200,7 @@ function registerInstagramNativeRoutes(app2) {
       if (!token || !igUserId) {
         return res.status(400).json({ error: "Instagram not connected. Please connect Instagram first." });
       }
-      const imageUrl = storePublicImage(imageToPost);
+      const imageUrl = imageToPost.startsWith("http") ? imageToPost : storePublicImage(imageToPost);
       console.log(`[instagram-native] Posting for org ${org.id}, image URL: ${imageUrl}`);
       console.log(`[instagram-native] Creating container: user=${igUserId}, image_url=${imageUrl}`);
       const containerRes = await fetch(`${GRAPH_API_V}/${igUserId}/media`, {

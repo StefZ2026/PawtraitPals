@@ -319,8 +319,8 @@ export function registerInstagramNativeRoutes(app: Express): void {
         return res.status(400).json({ error: "Instagram not connected. Please connect Instagram first." });
       }
 
-      // Store image as public URL
-      const imageUrl = storePublicImage(imageToPost);
+      // If image is already a public URL (Supabase Storage), use directly; otherwise cache as temp public URL
+      const imageUrl = imageToPost.startsWith('http') ? imageToPost : storePublicImage(imageToPost);
       console.log(`[instagram-native] Posting for org ${org.id}, image URL: ${imageUrl}`);
 
       // Step 1: Create media container

@@ -5,6 +5,7 @@ import { generateImage, editImage } from "../gemini";
 import { generateShowcaseMockup, generatePawfileMockup } from "../generate-mockups";
 import { isTrialExpired } from "../subscription";
 import { getUserId, getUserEmail, ADMIN_EMAIL, sanitizeForPrompt, resolveOrgForUser, checkDogLimit, aiRateLimiter, MAX_EDITS_PER_IMAGE } from "./helpers";
+import { uploadToStorage, isDataUri, fetchImageAsBuffer } from "../supabase-storage";
 
 export function registerPortraitRoutes(app: Express): void {
   app.get("/api/portraits/:id/image", async (req: Request, res: Response) => {
@@ -198,7 +199,15 @@ export function registerPortraitRoutes(app: Express): void {
         }
       }
 
-      const generatedImage = await generateImage(sanitizedPrompt, originalImage || undefined);
+      const generatedImageRaw = await generateImage(sanitizedPrompt, originalImage || undefined);
+
+      let generatedImage = generatedImageRaw;
+      try {
+        const fname = `portrait-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        generatedImage = await uploadToStorage(generatedImageRaw, "portraits", fname);
+      } catch (err) {
+        console.error("[storage-upload] Portrait upload failed, using base64 fallback:", err);
+      }
 
       let portraitRecord = existingPortrait;
       if (dogId && styleId) {
@@ -279,7 +288,22 @@ export function registerPortraitRoutes(app: Express): void {
         }
       }
 
-      const editedImage = await editImage(currentImage, sanitizedEditPrompt);
+      // If currentImage is a URL (from Storage), fetch and convert to data URI for Gemini
+      let imageForEdit = currentImage;
+      if (!isDataUri(currentImage)) {
+        const buf = await fetchImageAsBuffer(currentImage);
+        imageForEdit = `data:image/png;base64,${buf.toString('base64')}`;
+      }
+
+      const editedImageRaw = await editImage(imageForEdit, sanitizedEditPrompt);
+
+      let editedImage = editedImageRaw;
+      try {
+        const fname = `portrait-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        editedImage = await uploadToStorage(editedImageRaw, "portraits", fname);
+      } catch (err) {
+        console.error("[storage-upload] Edited portrait upload failed, using base64 fallback:", err);
+      }
 
       let editCount: number | null = null;
       if (portraitId) {
