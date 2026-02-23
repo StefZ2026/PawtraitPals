@@ -14,6 +14,7 @@ import { registerInstagramRoutes } from "./routes/instagram";
 import { registerInstagramNativeRoutes } from "./routes/instagram-native";
 import { registerImportRoutes } from "./routes/import";
 import { registerGdprRoutes } from "./routes/gdpr";
+import { registerJobRoutes } from "./routes/jobs";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -40,6 +41,7 @@ export async function registerRoutes(
   registerInstagramNativeRoutes(app);
   await registerImportRoutes(app);
   registerGdprRoutes(app);
+  registerJobRoutes(app);
 
   return httpServer;
 }
