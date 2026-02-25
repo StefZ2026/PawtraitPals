@@ -3,6 +3,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
+import { getBaseUrl } from "./routes/helpers";
 
 const currentDir = typeof __dirname !== 'undefined'
   ? __dirname
@@ -45,12 +46,6 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-}
-
-function getBaseUrl(req: Request): string {
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || 'pawtraitpals.com';
-  return `${proto}://${host}`;
 }
 
 function buildOgHtml(template: string, meta: {

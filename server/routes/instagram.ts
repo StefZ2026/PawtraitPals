@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { pool } from "../db";
 import { isAuthenticated } from "../auth";
-import { getUserId, getUserEmail, ADMIN_EMAIL } from "./helpers";
+import { getUserId, getUserEmail, ADMIN_EMAIL, isAdmin } from "./helpers";
 
 const AYRSHARE_API_URL = 'https://api.ayrshare.com/api';
 
@@ -312,9 +312,7 @@ export function registerInstagramRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/admin/instagram-debug", isAuthenticated, async (req: Request, res: Response) => {
-    const email = getUserEmail(req);
-    if (email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+  app.get("/api/admin/instagram-debug", isAuthenticated, isAdmin, async (req: Request, res: Response) => {
 
     const apiKey = process.env.AYRSHARE_API_KEY;
     if (!apiKey) return res.json({ error: "AYRSHARE_API_KEY not set" });
