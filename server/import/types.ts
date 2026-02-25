@@ -25,4 +25,5 @@ export interface ImportProvider {
   name: string;
   searchOrganizations(query: string, location?: string): Promise<NormalizedOrganization[]>;
   fetchAnimals(orgIdOrKey: string): Promise<NormalizedAnimal[]>;
+  getOrganization?(orgId: string): Promise<NormalizedOrganization>;
 }

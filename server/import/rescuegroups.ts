@@ -211,6 +211,20 @@ export const rescuegroupsProvider: ImportProvider = {
     return results.slice(0, 50);
   },
 
+  async getOrganization(orgId: string): Promise<NormalizedOrganization> {
+    const data = await rescuegroupsGet(`/public/orgs/${orgId}`);
+    const org = data.data;
+    if (!org) throw new Error("Organization not found");
+    return {
+      externalId: String(org.id),
+      name: org.attributes?.name || "Unknown",
+      location: org.attributes?.city && org.attributes?.state
+        ? `${org.attributes.city}, ${org.attributes.state}`
+        : null,
+      website: org.attributes?.url || null,
+    };
+  },
+
   async fetchAnimals(orgId: string): Promise<NormalizedAnimal[]> {
     const allAnimals: NormalizedAnimal[] = [];
     const maxPages = 10;

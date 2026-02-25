@@ -48,6 +48,28 @@ export async function registerImportRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Look up org info by ID (for direct org ID entry)
+  app.get("/api/import/org-info", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const providerName = req.query.provider as string;
+      const orgId = req.query.orgId as string;
+
+      if (!providerName) return res.status(400).json({ error: "provider is required" });
+      if (!orgId) return res.status(400).json({ error: "orgId is required" });
+
+      const provider = getProvider(providerName);
+      if (!provider.getOrganization) {
+        return res.status(400).json({ error: "Provider does not support org lookup" });
+      }
+
+      const org = await provider.getOrganization(orgId);
+      res.json(org);
+    } catch (error: any) {
+      console.error("[import] Org lookup error:", error);
+      res.status(500).json({ error: error.message || "Failed to look up organization" });
+    }
+  });
+
   // Fetch animals from an organization
   app.get("/api/import/animals", isAuthenticated, async (req: Request, res: Response) => {
     try {

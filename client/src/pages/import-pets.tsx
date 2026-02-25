@@ -47,6 +47,8 @@ export default function ImportPets() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLocation, setSearchLocation] = useState("");
   const [shelterluvKey, setShelterluvKey] = useState("");
+  const [rescuegroupsOrgId, setRescuegroupsOrgId] = useState("");
+  const [rescuegroupsMode, setRescuegroupsMode] = useState<"direct" | "search">("direct");
   const [selectedOrg, setSelectedOrg] = useState<NormalizedOrg | null>(null);
   const [selectedAnimals, setSelectedAnimals] = useState<Set<string>>(new Set());
   const [selectedPhotos, setSelectedPhotos] = useState<Record<string, string>>({});
@@ -143,6 +145,49 @@ export default function ImportPets() {
       const data = await res.json();
       setAnimals(data);
       setSelectedOrg({ externalId: "shelterluv", name: "Your ShelterLuv Account", location: null, website: null });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setIsLoadingAnimals(false);
+    }
+  };
+
+  const handleDirectOrgFetch = async () => {
+    if (!rescuegroupsOrgId.trim()) return;
+    setIsLoadingAnimals(true);
+    setAnimals(null);
+    setSelectedOrg(null);
+    setSelectedAnimals(new Set());
+    setSelectedPhotos({});
+    setLimitError(null);
+
+    try {
+      const headers = await getAuthHeaders();
+
+      // Fetch org info and animals in parallel
+      const orgParams = new URLSearchParams({ provider: "rescuegroups", orgId: rescuegroupsOrgId.trim() });
+      const animalParams = new URLSearchParams({ provider: "rescuegroups", orgId: rescuegroupsOrgId.trim() });
+      if (orgIdParam) animalParams.set("userOrgId", orgIdParam);
+
+      const [orgRes, animalsRes] = await Promise.all([
+        fetch(`/api/import/org-info?${orgParams}`, { headers }),
+        fetch(`/api/import/animals?${animalParams}`, { headers }),
+      ]);
+
+      if (!orgRes.ok) {
+        const err = await orgRes.json();
+        throw new Error(err.error || "Organization not found. Double-check your Org ID.");
+      }
+      if (!animalsRes.ok) {
+        const err = await animalsRes.json();
+        throw new Error(err.error || "Failed to fetch animals");
+      }
+
+      const orgData = await orgRes.json();
+      const animalsData = await animalsRes.json();
+
+      setSelectedOrg(orgData);
+      setAnimals(animalsData);
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -310,33 +355,68 @@ export default function ImportPets() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
-                Search RescueGroups
+                {rescuegroupsMode === "direct" ? "Connect RescueGroups" : "Search RescueGroups"}
               </CardTitle>
               <CardDescription>
-                Enter your zip code to find nearby rescue organizations, then optionally filter by name.
+                {rescuegroupsMode === "direct"
+                  ? "Enter your RescueGroups Org ID to pull your animals directly. You can find your Org ID in your RescueGroups dashboard URL."
+                  : "Search by location to find your rescue organization."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex gap-2 flex-wrap">
-                <Input
-                  placeholder="Zip code (e.g. 30188)"
-                  value={searchLocation}
-                  onChange={(e) => setSearchLocation(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-40"
-                />
-                <Input
-                  placeholder="Organization name (optional)"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 min-w-[200px]"
-                />
-                <Button onClick={handleSearch} disabled={isSearching || !searchLocation.trim()} className="gap-2 shrink-0">
-                  {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  Search
-                </Button>
-              </div>
+              {rescuegroupsMode === "direct" ? (
+                <>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Your RescueGroups Org ID (e.g. 8099)"
+                      value={rescuegroupsOrgId}
+                      onChange={(e) => setRescuegroupsOrgId(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleDirectOrgFetch()}
+                    />
+                    <Button onClick={handleDirectOrgFetch} disabled={isLoadingAnimals || !rescuegroupsOrgId.trim()} className="gap-2 shrink-0">
+                      {isLoadingAnimals ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      Fetch Animals
+                    </Button>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground hover:text-primary underline"
+                    onClick={() => { setRescuegroupsMode("search"); setAnimals(null); setSelectedOrg(null); setSearchResults(null); }}
+                  >
+                    Don't know your Org ID? Search by location
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex gap-2 flex-wrap">
+                    <Input
+                      placeholder="Zip code (e.g. 30188)"
+                      value={searchLocation}
+                      onChange={(e) => setSearchLocation(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="w-40"
+                    />
+                    <Input
+                      placeholder="Organization name (optional)"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="flex-1 min-w-[200px]"
+                    />
+                    <Button onClick={handleSearch} disabled={isSearching || !searchLocation.trim()} className="gap-2 shrink-0">
+                      {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      Search
+                    </Button>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground hover:text-primary underline"
+                    onClick={() => { setRescuegroupsMode("direct"); setSearchResults(null); setAnimals(null); setSelectedOrg(null); }}
+                  >
+                    Know your Org ID? Enter it directly
+                  </button>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
