@@ -33,16 +33,50 @@ async function rescuegroupsPost(path: string, body: any): Promise<any> {
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`RescueGroups API error ${res.status}: ${body}`);
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`RescueGroups API error ${res.status}: ${errBody}`);
   }
 
   return res.json();
 }
 
-function extractTags(animal: any): string[] {
+// Build lookup maps from JSON:API "included" sideloaded data
+function buildIncludedMaps(included: any[]) {
+  const species: Record<string, string> = {};
+  const statuses: Record<string, string> = {};
+  const pictures: Record<string, { large: string | null; original: string | null }> = {};
+
+  for (const inc of included) {
+    if (inc.type === "species") {
+      species[inc.id] = inc.attributes?.singular || "Unknown";
+    } else if (inc.type === "statuses") {
+      statuses[inc.id] = inc.attributes?.name || "Unknown";
+    } else if (inc.type === "pictures") {
+      const pa = inc.attributes || {};
+      pictures[inc.id] = {
+        large: pa.large?.url || null,
+        original: pa.original?.url || null,
+      };
+    }
+  }
+
+  return { species, statuses, pictures };
+}
+
+function getRelationshipId(animal: any, relName: string): string | null {
+  const data = animal.relationships?.[relName]?.data;
+  if (Array.isArray(data) && data.length > 0) return data[0].id;
+  return null;
+}
+
+function getRelationshipIds(animal: any, relName: string): string[] {
+  const data = animal.relationships?.[relName]?.data;
+  if (Array.isArray(data)) return data.map((d: any) => d.id);
+  return [];
+}
+
+function extractTags(attrs: any): string[] {
   const tags: string[] = [];
-  const attrs = animal.attributes || {};
 
   if (attrs.breedPrimary) tags.push(attrs.breedPrimary);
   if (attrs.breedSecondary) tags.push(attrs.breedSecondary);
@@ -50,51 +84,104 @@ function extractTags(animal: any): string[] {
   if (attrs.sizeGroup) tags.push(attrs.sizeGroup);
   if (attrs.ageGroup) tags.push(attrs.ageGroup);
   if (attrs.sex) tags.push(attrs.sex);
-  if (attrs.isHousetrained) tags.push("House Trained");
-  if (attrs.isSpecialNeeds) tags.push("Special Needs");
-  if (attrs.isMicrochipped) tags.push("Microchipped");
-  if (attrs.isOKWithDogs) tags.push("Good with Dogs");
-  if (attrs.isOKWithCats) tags.push("Good with Cats");
-  if (attrs.isOKWithKids) tags.push("Good with Kids");
+  if (attrs.isHousetrained === true) tags.push("House Trained");
+  if (attrs.isSpecialNeeds === true) tags.push("Special Needs");
+  if (attrs.isMicrochipped === true) tags.push("Microchipped");
+  if (attrs.isSpayedNeutered === true) tags.push("Spayed/Neutered");
+  if (attrs.isCurrentVaccinations === true) tags.push("Vaccinations Current");
+  if (attrs.isOKWithDogs === true) tags.push("Good with Dogs");
+  if (attrs.isOKWithCats === true) tags.push("Good with Cats");
+  if (attrs.isOKWithKids === true) tags.push("Good with Kids");
 
   return [...new Set(tags)];
 }
 
-function normalizeAnimal(animal: any): NormalizedAnimal {
+function normalizeAnimal(
+  animal: any,
+  maps: ReturnType<typeof buildIncludedMaps>,
+  speciesOverride?: "dog" | "cat"
+): NormalizedAnimal {
   const attrs = animal.attributes || {};
-  const species = (attrs.species || "").toLowerCase();
 
-  // Extract photos — prefer full size, fall back to thumbnail
+  // Species from JSON:API relationship (most reliable)
+  let species: "dog" | "cat" = speciesOverride || "dog";
+  if (!speciesOverride) {
+    const speciesId = getRelationshipId(animal, "species");
+    if (speciesId) {
+      const speciesName = (maps.species[speciesId] || "").toLowerCase();
+      species = speciesName === "cat" ? "cat" : "dog";
+    } else {
+      // Fallback: infer from slug or searchString
+      const slug = (attrs.slug || "").toLowerCase();
+      const searchStr = (attrs.searchString || "").toLowerCase();
+      if (slug.includes("-cat") || searchStr.includes(" cats ")) {
+        species = "cat";
+      }
+    }
+  }
+
+  // Photos from included pictures (full-size), fall back to thumbnail
   const photos: string[] = [];
-  if (attrs.pictureUrl) photos.push(attrs.pictureUrl);
-  else if (attrs.pictureThumbnailUrl) photos.push(attrs.pictureThumbnailUrl);
+  const picIds = getRelationshipIds(animal, "pictures");
+  for (const picId of picIds) {
+    const pic = maps.pictures[picId];
+    if (pic) {
+      const url = pic.original || pic.large;
+      if (url) photos.push(url);
+    }
+  }
+  if (photos.length === 0 && attrs.pictureThumbnailUrl) {
+    photos.push(attrs.pictureThumbnailUrl);
+  }
 
   return {
     externalId: String(animal.id),
     name: attrs.name || "Unknown",
-    species: species === "cat" ? "cat" : "dog",
+    species,
     breed: attrs.breedPrimary || null,
     age: attrs.ageGroup || attrs.ageString || null,
     description: attrs.descriptionText || attrs.description || null,
     photos,
     adoptionUrl: attrs.url || null,
-    isAvailable: (attrs.status || "").toLowerCase() === "available",
-    tags: extractTags(animal),
+    isAvailable: true, // we only fetch from the /available/ endpoints
+    tags: extractTags(attrs),
   };
+}
+
+// Fetch one page of available animals for an org from a specific endpoint
+async function fetchAvailablePage(
+  endpoint: string,
+  orgId: string,
+  page: number,
+  speciesOverride: "dog" | "cat"
+): Promise<{ animals: NormalizedAnimal[]; totalPages: number }> {
+  const data = await rescuegroupsPost(
+    `${endpoint}?include=species,statuses,pictures&limit=100&page=${page}`,
+    {
+      filters: [
+        { fieldName: "orgs.id", operation: "equal", criteria: orgId },
+      ],
+    }
+  );
+
+  const maps = buildIncludedMaps(data.included || []);
+  const animals = (data.data || []).map((a: any) =>
+    normalizeAnimal(a, maps, speciesOverride)
+  );
+  const totalPages = data.meta?.pages || 1;
+
+  return { animals, totalPages };
 }
 
 export const rescuegroupsProvider: ImportProvider = {
   name: "rescuegroups",
 
   async searchOrganizations(query: string, location?: string): Promise<NormalizedOrganization[]> {
-    // RescueGroups v5 API requires POST search with filterRadius for location-based search
-    // Name-based filtering is not supported server-side, so we filter client-side after fetching
     const postalCode = (location || "").trim();
 
     let allOrgs: any[] = [];
 
     if (postalCode) {
-      // Location-based search using POST with filterRadius
       const data = await rescuegroupsPost("/public/orgs/search", {
         filterRadius: {
           postalcode: postalCode,
@@ -103,12 +190,10 @@ export const rescuegroupsProvider: ImportProvider = {
       });
       allOrgs = data.data || [];
     } else {
-      // No location — get first page of orgs (API doesn't support name filtering)
       const data = await rescuegroupsGet("/public/orgs?limit=250");
       allOrgs = data.data || [];
     }
 
-    // Map to normalized format
     let results = allOrgs.map((org: any) => ({
       externalId: String(org.id),
       name: org.attributes?.name || "Unknown",
@@ -118,35 +203,32 @@ export const rescuegroupsProvider: ImportProvider = {
       website: org.attributes?.url || null,
     }));
 
-    // Client-side filter by name if query provided
     if (query.trim()) {
       const q = query.trim().toLowerCase();
-      results = results.filter((org) =>
-        org.name.toLowerCase().includes(q)
-      );
+      results = results.filter((org) => org.name.toLowerCase().includes(q));
     }
 
     return results.slice(0, 50);
   },
 
   async fetchAnimals(orgId: string): Promise<NormalizedAnimal[]> {
-    const animals: NormalizedAnimal[] = [];
-    let page = 1;
+    const allAnimals: NormalizedAnimal[] = [];
     const maxPages = 10;
 
-    while (page <= maxPages) {
-      const data = await rescuegroupsGet(
-        `/public/animals?filter[orgID]=${orgId}&filter[status]=Available&limit=100&page=${page}`
-      );
-
-      const batch = (data.data || []).map(normalizeAnimal);
-      animals.push(...batch);
-
-      const totalPages = data.meta?.pages || 1;
-      if (page >= totalPages) break;
-      page++;
+    // Fetch available dogs and cats in parallel (separate endpoints)
+    for (const { endpoint, species } of [
+      { endpoint: "/public/animals/search/available/dogs", species: "dog" as const },
+      { endpoint: "/public/animals/search/available/cats", species: "cat" as const },
+    ]) {
+      let page = 1;
+      while (page <= maxPages) {
+        const { animals, totalPages } = await fetchAvailablePage(endpoint, orgId, page, species);
+        allAnimals.push(...animals);
+        if (page >= totalPages) break;
+        page++;
+      }
     }
 
-    return animals;
+    return allAnimals;
   },
 };
