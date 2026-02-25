@@ -213,7 +213,8 @@ export const rescuegroupsProvider: ImportProvider = {
 
   async getOrganization(orgId: string): Promise<NormalizedOrganization> {
     const data = await rescuegroupsGet(`/public/orgs/${orgId}`);
-    const org = data.data;
+    const raw = data.data;
+    const org = Array.isArray(raw) ? raw[0] : raw;
     if (!org) throw new Error("Organization not found");
     return {
       externalId: String(org.id),
