@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "wouter";
-import { Heart, Palette, Share2, Sparkles, Dog, Cat, Building2, LogOut, LayoutDashboard, LayoutGrid, Menu } from "lucide-react";
+import { Heart, Palette, Share2, Sparkles, Dog, Cat, Building2, LogOut, LayoutDashboard, LayoutGrid, Menu, Download } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -207,8 +207,8 @@ export default function Home() {
             {[
               {
                 icon: Dog,
-                title: "Upload a Photo",
-                description: "Upload a clear photo of your rescue dog or cat. We work with any breed or mix!",
+                title: "Add Your Pets",
+                description: "Upload photos or import directly from RescueGroups.org or ShelterLuv — no re-entering data.",
               },
               {
                 icon: Palette,
@@ -249,7 +249,7 @@ export default function Home() {
               Built specifically for rescue organizations to showcase their adoptable pets
             </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {[
               {
                 icon: Heart,
@@ -265,6 +265,11 @@ export default function Home() {
                 icon: Building2,
                 title: "Organization Galleries",
                 description: "Create stunning collages of all your available rescue pets in one place",
+              },
+              {
+                icon: Download,
+                title: "Import from RescueGroups & ShelterLuv",
+                description: "Already on RescueGroups.org or ShelterLuv? Import your pets in one click — photos, breeds, and bios included",
               },
               {
                 icon: Share2,

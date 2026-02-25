@@ -7,7 +7,10 @@ async function rescuegroupsGet(path: string): Promise<any> {
   }
 
   const res = await fetch(`https://api.rescuegroups.org/v5${path}`, {
-    headers: { Authorization: apiKey },
+    headers: {
+      Authorization: apiKey,
+      "Content-Type": "application/vnd.api+json",
+    },
   });
 
   if (!res.ok) {
@@ -42,9 +45,10 @@ function normalizeAnimal(animal: any): NormalizedAnimal {
   const attrs = animal.attributes || {};
   const species = (attrs.species || "").toLowerCase();
 
-  // Extract photos from included relationships
+  // Extract photos — prefer full size, fall back to thumbnail
   const photos: string[] = [];
-  if (attrs.pictureThumbnailUrl) photos.push(attrs.pictureThumbnailUrl);
+  if (attrs.pictureUrl) photos.push(attrs.pictureUrl);
+  else if (attrs.pictureThumbnailUrl) photos.push(attrs.pictureThumbnailUrl);
 
   return {
     externalId: String(animal.id),
