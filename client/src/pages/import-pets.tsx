@@ -77,7 +77,8 @@ export default function ImportPets() {
 
     try {
       const headers = await getAuthHeaders();
-      const params = new URLSearchParams({ provider, name: searchQuery.trim() || "_" });
+      const params = new URLSearchParams({ provider });
+      if (searchQuery.trim()) params.set("name", searchQuery.trim());
       if (searchLocation.trim()) params.set("location", searchLocation.trim());
 
       const res = await fetch(`/api/import/search?${params}`, { headers });
