@@ -1,5 +1,30 @@
 import type { ImportProvider, NormalizedAnimal, NormalizedOrganization } from "./types";
 
+// Decode HTML entities that RescueGroups embeds in description text
+const HTML_ENTITIES: Record<string, string> = {
+  "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"',
+  "&apos;": "'", "&nbsp;": " ", "&rsquo;": "\u2019", "&lsquo;": "\u2018",
+  "&rdquo;": "\u201C", "&ldquo;": "\u201D", "&mdash;": "\u2014",
+  "&ndash;": "\u2013", "&hellip;": "\u2026", "&bull;": "\u2022",
+  "&copy;": "\u00A9", "&reg;": "\u00AE", "&trade;": "\u2122",
+};
+
+function decodeHtmlEntities(text: string): string {
+  if (!text) return text;
+  // Replace named entities
+  let result = text.replace(/&[a-zA-Z]+;/g, (entity) => {
+    return HTML_ENTITIES[entity.toLowerCase()] ?? entity;
+  });
+  // Replace numeric entities (&#123; and &#x1F; forms)
+  result = result.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+  result = result.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  // Strip any remaining HTML tags
+  result = result.replace(/<[^>]+>/g, "");
+  // Normalize whitespace (collapse multiple spaces/nbsp into single space)
+  result = result.replace(/\s+/g, " ").trim();
+  return result;
+}
+
 function getApiKey(): string {
   const apiKey = process.env.RESCUEGROUPS_API_KEY;
   if (!apiKey) throw new Error("RescueGroups API key not configured");
@@ -136,11 +161,11 @@ function normalizeAnimal(
 
   return {
     externalId: String(animal.id),
-    name: attrs.name || "Unknown",
+    name: decodeHtmlEntities(attrs.name) || "Unknown",
     species,
     breed: attrs.breedPrimary || null,
     age: attrs.ageGroup || attrs.ageString || null,
-    description: attrs.descriptionText || attrs.description || null,
+    description: decodeHtmlEntities(attrs.descriptionText || attrs.description) || null,
     photos,
     adoptionUrl: attrs.url || null,
     isAvailable: true, // we only fetch from the /available/ endpoints

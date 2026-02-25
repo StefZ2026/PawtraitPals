@@ -74,11 +74,23 @@ You must reproduce the PRECISE color of EACH body area — not a uniform "averag
 
 You MUST also faithfully reproduce THIS SPECIFIC animal's:
 - Face shape, muzzle, and facial structure
-- Ear shape, size, and positioning
+- Ear shape, size, and positioning (see ASYMMETRY rule below)
 - Fur/coat texture and length
 - Eye color and shape
 - Body size and proportions
 - Any unique distinguishing features (spots, patches, scars, etc.)
+
+ASYMMETRY AND UNIQUE FEATURES ARE THE HIGHEST PRIORITY AFTER COLOR:
+Many animals have features that differ from their "breed standard" — these quirks are what make them recognizable to their family and are the MOST IMPORTANT things to preserve. Study the photo for ANY of these:
+- Ears that are different from each other (one up, one down; one folded, one straight; one floppy, one perked)
+- An ear that flips up, folds back, or sticks out at an unusual angle
+- Underbites, overbites, or tongues that stick out
+- Heterochromia (different colored eyes)
+- A crooked or kinked tail
+- Missing limbs or a limb held differently
+- Scars, healed injuries, or bald patches
+- An unusually large/small feature for the breed
+If you see ANY asymmetry or unusual feature in the photo, you MUST reproduce it exactly — do NOT "fix" or "correct" it to match breed standard. These features are NOT errors. A flipped ear must stay flipped. A crooked tail must stay crooked. An underbite must stay an underbite.
 
 DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo.
 
