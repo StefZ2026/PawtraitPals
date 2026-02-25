@@ -22,6 +22,7 @@ interface NormalizedOrg {
   name: string;
   location: string | null;
   website: string | null;
+  animalCount?: number;
 }
 
 interface NormalizedAnimal {
@@ -425,8 +426,11 @@ export default function ImportPets() {
         {searchResults && !selectedOrg && (
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">
-              {searchResults.length === 0 ? "No organizations found" : `Found ${searchResults.length} organization${searchResults.length !== 1 ? "s" : ""}`}
+              {searchResults.length === 0 ? "No organizations with available animals found" : `Found ${searchResults.length} organization${searchResults.length !== 1 ? "s" : ""} with animals`}
             </h2>
+            {searchResults.length === 0 && (
+              <p className="text-sm text-muted-foreground">Some organizations in this area may list their animals on a different platform like Petfinder or ShelterLuv.</p>
+            )}
             {searchResults.map((org) => (
               <Card
                 key={org.externalId}
@@ -437,7 +441,9 @@ export default function ImportPets() {
                   <Building2 className="h-8 w-8 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{org.name}</p>
-                    {org.location && <p className="text-sm text-muted-foreground">{org.location}</p>}
+                    <p className="text-sm text-muted-foreground">
+                      {org.location && `${org.location} · `}{org.animalCount != null ? `${org.animalCount} animals` : ""}
+                    </p>
                   </div>
                   <Button variant="outline" size="sm">Select</Button>
                 </CardContent>

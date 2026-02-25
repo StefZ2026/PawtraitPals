@@ -198,6 +198,23 @@ async function fetchAvailablePage(
   return { animals, totalPages };
 }
 
+// Quick count of available animals for an org (dogs + cats)
+async function countAvailableAnimals(orgId: string): Promise<number> {
+  try {
+    const [dogsRes, catsRes] = await Promise.all([
+      rescuegroupsPost("/public/animals/search/available/dogs?limit=1", {
+        filters: [{ fieldName: "orgs.id", operation: "equal", criteria: orgId }],
+      }),
+      rescuegroupsPost("/public/animals/search/available/cats?limit=1", {
+        filters: [{ fieldName: "orgs.id", operation: "equal", criteria: orgId }],
+      }),
+    ]);
+    return (dogsRes.meta?.count || 0) + (catsRes.meta?.count || 0);
+  } catch {
+    return 0;
+  }
+}
+
 export const rescuegroupsProvider: ImportProvider = {
   name: "rescuegroups",
 
@@ -233,7 +250,18 @@ export const rescuegroupsProvider: ImportProvider = {
       results = results.filter((org) => org.name.toLowerCase().includes(q));
     }
 
-    return results.slice(0, 50);
+    // Trim before counting to limit API calls
+    const candidates = results.slice(0, 50);
+
+    // Count available animals per org in parallel, filter out empty ones
+    const withCounts = await Promise.all(
+      candidates.map(async (org) => ({
+        ...org,
+        animalCount: await countAvailableAnimals(org.externalId),
+      }))
+    );
+
+    return withCounts.filter((org) => org.animalCount > 0);
   },
 
   async getOrganization(orgId: string): Promise<NormalizedOrganization> {
