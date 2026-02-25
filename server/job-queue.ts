@@ -8,6 +8,7 @@ export interface Job {
   payload: any;
   result?: any;
   error?: string;
+  userId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -36,7 +37,7 @@ export function registerWorker(fn: JobWorker): void {
   workerFn = fn;
 }
 
-export function enqueue(type: Job["type"], payload: any, total = 1): string {
+export function enqueue(type: Job["type"], payload: any, total = 1, userId?: string): string {
   const id = randomUUID();
   const job: Job = {
     id,
@@ -44,6 +45,7 @@ export function enqueue(type: Job["type"], payload: any, total = 1): string {
     status: "queued",
     progress: { current: 0, total },
     payload,
+    userId,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

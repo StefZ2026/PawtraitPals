@@ -160,7 +160,7 @@ export function registerInstagramRoutes(app: Express): void {
       }
     } catch (error: any) {
       console.error("[instagram] Connect error:", error);
-      res.redirect('/settings?instagram=error&detail=' + encodeURIComponent(error.message || 'unknown'));
+      res.redirect('/settings?instagram=error&detail=connect_failed');
     }
   });
 
@@ -264,7 +264,7 @@ export function registerInstagramRoutes(app: Express): void {
       });
     } catch (error: any) {
       console.error("[instagram] Post error:", error);
-      res.status(500).json({ error: error.message || "Failed to post to Instagram" });
+      res.status(500).json({ error: "Failed to post to Instagram" });
     }
   });
 
@@ -340,7 +340,7 @@ export function registerInstagramRoutes(app: Express): void {
         },
       });
     } catch (e: any) {
-      res.json({ error: e.message });
+      res.json({ error: "Failed to fetch debug info" });
     }
   });
 }

@@ -113,7 +113,7 @@ export function registerAuthRoutes(app: Express): void {
 
       if (error) {
         console.error('Signup error:', error.message);
-        return res.status(400).json({ error: error.message });
+        return res.status(400).json({ error: "Failed to create account. Please try again." });
       }
 
       // Record consent timestamp

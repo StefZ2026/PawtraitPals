@@ -44,7 +44,7 @@ export async function registerImportRoutes(app: Express): Promise<void> {
       res.json(orgs);
     } catch (error: any) {
       console.error("[import] Search error:", error);
-      res.status(500).json({ error: error.message || "Failed to search organizations" });
+      res.status(500).json({ error: "Failed to search organizations" });
     }
   });
 
@@ -66,7 +66,7 @@ export async function registerImportRoutes(app: Express): Promise<void> {
       res.json(org);
     } catch (error: any) {
       console.error("[import] Org lookup error:", error);
-      res.status(500).json({ error: error.message || "Failed to look up organization" });
+      res.status(500).json({ error: "Failed to look up organization" });
     }
   });
 
@@ -111,7 +111,7 @@ export async function registerImportRoutes(app: Express): Promise<void> {
       res.json(animals.map((a: any) => ({ ...a, alreadyImported: false })));
     } catch (error: any) {
       console.error("[import] Fetch animals error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch animals" });
+      res.status(500).json({ error: "Failed to fetch animals" });
     }
   });
 
@@ -214,7 +214,7 @@ export async function registerImportRoutes(app: Express): Promise<void> {
       res.json({ imported, skipped });
     } catch (error: any) {
       console.error("[import] Import error:", error);
-      res.status(500).json({ error: error.message || "Failed to import pets" });
+      res.status(500).json({ error: "Failed to import pets" });
     }
   });
 }

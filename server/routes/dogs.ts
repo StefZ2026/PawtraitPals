@@ -177,7 +177,7 @@ export function registerDogRoutes(app: Express): void {
       }
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("Error creating pet:", errMsg, error);
-      res.status(500).json({ error: `Failed to save pet: ${errMsg}` });
+      res.status(500).json({ error: "Failed to save pet" });
     }
   });
 
@@ -230,7 +230,7 @@ export function registerDogRoutes(app: Express): void {
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("Error updating pet:", errMsg, error);
-      res.status(500).json({ error: `Failed to update pet: ${errMsg}` });
+      res.status(500).json({ error: "Failed to update pet" });
     }
   });
 

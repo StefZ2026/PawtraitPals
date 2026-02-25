@@ -301,7 +301,7 @@ export function registerPortraitRoutes(app: Express): void {
           generatedImageUrl: existingPortrait.generatedImageUrl,
         } : null,
         isNewPortrait,
-      });
+      }, 1, userId);
 
       res.status(202).json({ jobId });
     } catch (error) {
@@ -364,7 +364,7 @@ export function registerPortraitRoutes(app: Express): void {
         imageForEdit,
         editPrompt: sanitizedEditPrompt,
         portraitId: portraitId ? parseInt(portraitId) : null,
-      });
+      }, 1, userId);
 
       res.status(202).json({ jobId });
     } catch (error) {

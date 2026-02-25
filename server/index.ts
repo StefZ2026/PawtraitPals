@@ -10,7 +10,17 @@ import { setupOgMetaRoutes } from "./og-meta";
 const app = express();
 
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://js.stripe.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.supabase.co", "https://api.qrserver.com"],
+      connectSrc: ["'self'", "https://*.supabase.co", "https://api.stripe.com"],
+      frameSrc: ["https://js.stripe.com"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
 }));
 app.disable("x-powered-by");
@@ -141,10 +151,9 @@ httpServer.listen({ port, host: "0.0.0.0" }, () => {
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
       console.error("Internal Server Error:", err);
       if (res.headersSent) return next(err);
-      return res.status(status).json({ message });
+      return res.status(status).json({ message: "Internal Server Error" });
     });
 
     if (process.env.NODE_ENV === "production") {

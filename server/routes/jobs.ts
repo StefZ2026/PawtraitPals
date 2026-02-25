@@ -1,11 +1,17 @@
 import type { Express, Response } from "express";
 import { isAuthenticated } from "../auth";
 import { getJob, getJobs } from "../job-queue";
+import { getUserId } from "./helpers";
 
 export function registerJobRoutes(app: Express): void {
   app.get("/api/jobs/:jobId", isAuthenticated, (req: any, res: Response) => {
     const job = getJob(req.params.jobId);
     if (!job) return res.status(404).json({ error: "Job not found" });
+    // Verify the requesting user owns this job (if userId was recorded)
+    const userId = getUserId(req);
+    if (job.userId && job.userId !== userId) {
+      return res.status(404).json({ error: "Job not found" });
+    }
     res.json(job);
   });
 
@@ -13,7 +19,13 @@ export function registerJobRoutes(app: Express): void {
     const ids = (req.query.ids as string || "").split(",").filter(Boolean);
     if (ids.length === 0) return res.status(400).json({ error: "Provide ?ids=id1,id2,..." });
     if (ids.length > 50) return res.status(400).json({ error: "Max 50 job IDs per request" });
-    const results = getJobs(ids).map((j, i) => j || { id: ids[i], status: "not_found" });
+    const userId = getUserId(req);
+    const results = getJobs(ids).map((j, i) => {
+      if (!j) return { id: ids[i], status: "not_found" };
+      // Filter out jobs belonging to other users
+      if (j.userId && j.userId !== userId) return { id: ids[i], status: "not_found" };
+      return j;
+    });
     res.json(results);
   });
 }

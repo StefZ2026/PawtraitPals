@@ -188,7 +188,7 @@ export function registerAdminRoutes(app: Express): void {
       }
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("Error creating pet for org:", errMsg, error);
-      res.status(500).json({ error: `Failed to save pet: ${errMsg}` });
+      res.status(500).json({ error: "Failed to save pet" });
     }
   });
 
