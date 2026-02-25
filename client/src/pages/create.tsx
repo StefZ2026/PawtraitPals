@@ -793,8 +793,12 @@ export default function Create() {
               onChange={(e) => setAdoptionUrlInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && adoptionUrlInput.trim()) {
-                  setAdoptionUrl(adoptionUrlInput.trim());
+                  const url = adoptionUrlInput.trim();
+                  setAdoptionUrl(url);
                   setShowAdoptionUrlDialog(false);
+                  if (editingDogId) {
+                    apiRequest("PATCH", `/api/dogs/${editingDogId}`, { adoptionUrl: url }).catch(() => {});
+                  }
                 }
               }}
               autoFocus
@@ -803,8 +807,12 @@ export default function Create() {
           <DialogFooter>
             <Button
               onClick={() => {
-                setAdoptionUrl(adoptionUrlInput.trim());
+                const url = adoptionUrlInput.trim();
+                setAdoptionUrl(url);
                 setShowAdoptionUrlDialog(false);
+                if (editingDogId) {
+                  apiRequest("PATCH", `/api/dogs/${editingDogId}`, { adoptionUrl: url }).catch(() => {});
+                }
               }}
               disabled={!adoptionUrlInput.trim()}
               className="w-full gap-2"
