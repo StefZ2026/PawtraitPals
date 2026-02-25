@@ -37,10 +37,10 @@ export async function registerImportRoutes(app: Express): Promise<void> {
       const location = req.query.location as string;
 
       if (!providerName) return res.status(400).json({ error: "provider is required" });
-      if (!name) return res.status(400).json({ error: "name is required" });
+      if (!name && !location) return res.status(400).json({ error: "name or location is required" });
 
       const provider = getProvider(providerName);
-      const orgs = await provider.searchOrganizations(name, location);
+      const orgs = await provider.searchOrganizations(name || "", location);
       res.json(orgs);
     } catch (error: any) {
       console.error("[import] Search error:", error);

@@ -66,7 +66,10 @@ export default function ImportPets() {
   });
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    // RescueGroups requires location (zip code); other providers require name
+    if (provider === "rescuegroups" && !searchLocation.trim()) return;
+    if (provider !== "rescuegroups" && !searchQuery.trim()) return;
+
     setIsSearching(true);
     setSearchResults(null);
     setSelectedOrg(null);
@@ -74,7 +77,7 @@ export default function ImportPets() {
 
     try {
       const headers = await getAuthHeaders();
-      const params = new URLSearchParams({ provider, name: searchQuery.trim() });
+      const params = new URLSearchParams({ provider, name: searchQuery.trim() || "_" });
       if (searchLocation.trim()) params.set("location", searchLocation.trim());
 
       const res = await fetch(`/api/import/search?${params}`, { headers });
@@ -309,19 +312,26 @@ export default function ImportPets() {
                 Search RescueGroups
               </CardTitle>
               <CardDescription>
-                Search for your rescue organization to import your animals.
+                Enter your zip code to find nearby rescue organizations, then optionally filter by name.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <div className="flex gap-2 flex-wrap">
                 <Input
-                  placeholder="Organization name"
+                  placeholder="Zip code (e.g. 30188)"
+                  value={searchLocation}
+                  onChange={(e) => setSearchLocation(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="w-40"
+                />
+                <Input
+                  placeholder="Organization name (optional)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="flex-1 min-w-[200px]"
                 />
-                <Button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()} className="gap-2 shrink-0">
+                <Button onClick={handleSearch} disabled={isSearching || !searchLocation.trim()} className="gap-2 shrink-0">
                   {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                   Search
                 </Button>

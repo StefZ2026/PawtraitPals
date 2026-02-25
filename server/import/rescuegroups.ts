@@ -1,16 +1,35 @@
 import type { ImportProvider, NormalizedAnimal, NormalizedOrganization } from "./types";
 
-async function rescuegroupsGet(path: string): Promise<any> {
+function getApiKey(): string {
   const apiKey = process.env.RESCUEGROUPS_API_KEY;
-  if (!apiKey) {
-    throw new Error("RescueGroups API key not configured");
-  }
+  if (!apiKey) throw new Error("RescueGroups API key not configured");
+  return apiKey;
+}
 
+async function rescuegroupsGet(path: string): Promise<any> {
   const res = await fetch(`https://api.rescuegroups.org/v5${path}`, {
     headers: {
-      Authorization: apiKey,
+      Authorization: getApiKey(),
       "Content-Type": "application/vnd.api+json",
     },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`RescueGroups API error ${res.status}: ${body}`);
+  }
+
+  return res.json();
+}
+
+async function rescuegroupsPost(path: string, body: any): Promise<any> {
+  const res = await fetch(`https://api.rescuegroups.org/v5${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: getApiKey(),
+      "Content-Type": "application/vnd.api+json",
+    },
+    body: JSON.stringify({ data: body }),
   });
 
   if (!res.ok) {
@@ -67,14 +86,30 @@ function normalizeAnimal(animal: any): NormalizedAnimal {
 export const rescuegroupsProvider: ImportProvider = {
   name: "rescuegroups",
 
-  async searchOrganizations(query: string): Promise<NormalizedOrganization[]> {
-    // RescueGroups v5 uses filter syntax
-    const encodedQuery = encodeURIComponent(query);
-    const data = await rescuegroupsGet(
-      `/public/orgs?filter[name]=${encodedQuery}&limit=20`
-    );
+  async searchOrganizations(query: string, location?: string): Promise<NormalizedOrganization[]> {
+    // RescueGroups v5 API requires POST search with filterRadius for location-based search
+    // Name-based filtering is not supported server-side, so we filter client-side after fetching
+    const postalCode = (location || "").trim();
 
-    return (data.data || []).map((org: any) => ({
+    let allOrgs: any[] = [];
+
+    if (postalCode) {
+      // Location-based search using POST with filterRadius
+      const data = await rescuegroupsPost("/public/orgs/search", {
+        filterRadius: {
+          postalcode: postalCode,
+          miles: 50,
+        },
+      });
+      allOrgs = data.data || [];
+    } else {
+      // No location — get first page of orgs (API doesn't support name filtering)
+      const data = await rescuegroupsGet("/public/orgs?limit=250");
+      allOrgs = data.data || [];
+    }
+
+    // Map to normalized format
+    let results = allOrgs.map((org: any) => ({
       externalId: String(org.id),
       name: org.attributes?.name || "Unknown",
       location: org.attributes?.city && org.attributes?.state
@@ -82,6 +117,16 @@ export const rescuegroupsProvider: ImportProvider = {
         : null,
       website: org.attributes?.url || null,
     }));
+
+    // Client-side filter by name if query provided
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      results = results.filter((org) =>
+        org.name.toLowerCase().includes(q)
+      );
+    }
+
+    return results.slice(0, 50);
   },
 
   async fetchAnimals(orgId: string): Promise<NormalizedAnimal[]> {
