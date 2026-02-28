@@ -797,7 +797,7 @@ export default function Create() {
                   setAdoptionUrl(url);
                   setShowAdoptionUrlDialog(false);
                   if (editingDogId) {
-                    apiRequest("PATCH", `/api/dogs/${editingDogId}`, { adoptionUrl: url }).catch(() => {});
+                    apiRequest("PATCH", `/api/dogs/${editingDogId}`, { adoptionUrl: url }).catch((err) => console.error("[adoption-url] Save failed:", err));
                   }
                 }
               }}
@@ -811,7 +811,7 @@ export default function Create() {
                 setAdoptionUrl(url);
                 setShowAdoptionUrlDialog(false);
                 if (editingDogId) {
-                  apiRequest("PATCH", `/api/dogs/${editingDogId}`, { adoptionUrl: url }).catch(() => {});
+                  apiRequest("PATCH", `/api/dogs/${editingDogId}`, { adoptionUrl: url }).catch((err) => console.error("[adoption-url] Save failed:", err));
                 }
               }}
               disabled={!adoptionUrlInput.trim()}

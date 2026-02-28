@@ -66,11 +66,6 @@ function pillSvg(text: string, fontSize: number, bgColor: string, textColor: str
   return { svg: Buffer.from(svg), width, height };
 }
 
-async function extractImageFromDataUri(dataUri: string): Promise<Buffer> {
-  const base64Data = dataUri.replace(/^data:image\/\w+;base64,/, "");
-  return Buffer.from(base64Data, "base64");
-}
-
 async function resizeToFit(imageBuffer: Buffer, maxW: number, maxH: number): Promise<Buffer> {
   return sharp(imageBuffer)
     .resize(maxW, maxH, { fit: "cover", position: "center" })
