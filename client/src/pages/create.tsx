@@ -75,8 +75,12 @@ export default function Create() {
   const [petAge, setPetAge] = useState("");
   const [adoptionUrl, setAdoptionUrl] = useState("");
   const [petDescription, setPetDescription] = useState("");
-  const [species, setSpecies] = useState<"dog" | "cat" | null>(speciesParam || null);
-  const [speciesConfirmed, setSpeciesConfirmed] = useState(false);
+  const [species, setSpecies] = useState<"dog" | "cat" | null>(
+    speciesParam || (sessionStorage.getItem("create_species") as "dog" | "cat" | null)
+  );
+  const [speciesConfirmed, setSpeciesConfirmed] = useState(
+    !!speciesParam || sessionStorage.getItem("create_speciesConfirmed") === "true"
+  );
   const [loaded, setLoaded] = useState(false);
 
   const [views, setViews] = useState<PortraitView[]>([]);
@@ -186,6 +190,14 @@ export default function Create() {
       }
     }
   }, [orgSpecies, editingDogId, speciesParam, myOrg, targetOrg, speciesConfirmed]);
+
+  // Persist species selection in sessionStorage so it survives iOS page eviction
+  useEffect(() => {
+    if (speciesConfirmed && species) {
+      sessionStorage.setItem("create_species", species);
+      sessionStorage.setItem("create_speciesConfirmed", "true");
+    }
+  }, [species, speciesConfirmed]);
 
   const handleSpeciesSelect = (s: "dog" | "cat") => {
     if (s !== species) {

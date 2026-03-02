@@ -1,11 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, X, Image as ImageIcon, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
-const MAX_DIM = 1024;
 
 interface ImageUploadProps {
   onImageUpload: (imageData: string) => void;
@@ -16,56 +15,105 @@ interface ImageUploadProps {
 export function ImageUpload({ onImageUpload, currentImage, onClear }: ImageUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const { toast } = useToast();
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback((file: File) => {
+  // Stable refs so event listeners never go stale
+  const onImageUploadRef = useRef(onImageUpload);
+  onImageUploadRef.current = onImageUpload;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
+  const processFile = useCallback((file: File) => {
     if (file.type && !file.type.startsWith("image/")) {
-      toast({ title: "Not an image", description: "Please select a photo.", variant: "destructive" });
+      toastRef.current({ title: "Not an image", description: "Please select a photo.", variant: "destructive" });
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      toast({ title: "File too large", description: "Please use an image under 20 MB.", variant: "destructive" });
+      toastRef.current({ title: "File too large", description: "Please use an image under 20 MB.", variant: "destructive" });
       return;
     }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      if (result) {
+        onImageUploadRef.current(result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }, []); // No deps — uses refs for everything
 
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > MAX_DIM || height > MAX_DIM) {
-        if (width > height) {
-          height = Math.round(height * (MAX_DIM / width));
-          width = MAX_DIM;
-        } else {
-          width = Math.round(width * (MAX_DIM / height));
-          height = MAX_DIM;
-        }
+  const processFileRef = useRef(processFile);
+  processFileRef.current = processFile;
+
+  // Check all file inputs for files (handles BFCache restoration on iOS)
+  const checkAllInputs = useCallback(() => {
+    [uploadRef, cameraRef, replaceRef].forEach(ref => {
+      const input = ref.current;
+      if (input?.files?.length) {
+        processFileRef.current(input.files[0]);
+        input.value = "";
       }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(objectUrl);
-        toast({ title: "Processing error", description: "Could not process the image. Please try another photo.", variant: "destructive" });
-        return;
+    });
+  }, []);
+
+  // Native change event listeners — stable, never re-attached
+  useEffect(() => {
+    const handleChange = (e: Event) => {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (file) processFileRef.current(file);
+      input.value = "";
+    };
+    const upload = uploadRef.current;
+    const camera = cameraRef.current;
+    const replace = replaceRef.current;
+    if (upload) upload.addEventListener("change", handleChange);
+    if (camera) camera.addEventListener("change", handleChange);
+    if (replace) replace.addEventListener("change", handleChange);
+    return () => {
+      if (upload) upload.removeEventListener("change", handleChange);
+      if (camera) camera.removeEventListener("change", handleChange);
+      if (replace) replace.removeEventListener("change", handleChange);
+    };
+  }, []); // Empty deps — stable forever
+
+  // iOS Safari page eviction fix:
+  // When iOS evicts the page during the photo picker and restores it,
+  // the change event doesn't re-fire but the file may still be in the input.
+  // These listeners detect page restoration and check for files.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        setTimeout(checkAllInputs, 100);
       }
-      ctx.drawImage(img, 0, 0, width, height);
-      URL.revokeObjectURL(objectUrl);
-      onImageUpload(canvas.toDataURL("image/jpeg", 0.85));
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      toast({ title: "Could not load image", description: "The photo format may not be supported. Try taking a new photo or using a JPG/PNG.", variant: "destructive" });
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setTimeout(checkAllInputs, 300);
+      }
     };
-    img.src = objectUrl;
-  }, [onImageUpload, toast]);
+    const onFocus = () => {
+      setTimeout(checkAllInputs, 300);
+    };
+
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [checkAllInputs]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
+    if (file) processFile(file);
+  }, [processFile]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -75,12 +123,6 @@ export function ImageUpload({ onImageUpload, currentImage, onClear }: ImageUploa
   const handleDragLeave = useCallback(() => {
     setIsDragging(false);
   }, []);
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-    e.target.value = "";
-  }, [handleFile]);
 
   if (currentImage) {
     return (
@@ -104,10 +146,10 @@ export function ImageUpload({ onImageUpload, currentImage, onClear }: ImageUploa
               Replace Photo
             </Button>
             <input
+              ref={replaceRef}
               type="file"
               accept="image/*"
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              onChange={handleInputChange}
               data-testid="input-file-replace"
             />
           </div>
@@ -135,7 +177,7 @@ export function ImageUpload({ onImageUpload, currentImage, onClear }: ImageUploa
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
     >
-      <CardContent className="flex flex-col items-center justify-center py-16">
+      <CardContent className="flex flex-col items-center justify-center py-12">
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           {isDragging ? (
             <Upload className="h-8 w-8 text-primary animate-bounce" />
@@ -144,23 +186,39 @@ export function ImageUpload({ onImageUpload, currentImage, onClear }: ImageUploa
           )}
         </div>
         <h3 className="text-lg font-semibold mb-1" data-testid="text-upload-heading">
-          {isDragging ? "Drop it right here!" : "Drag & drop a photo here"}
+          {isDragging ? "Drop it right here!" : "Upload a photo"}
         </h3>
         <p className="text-sm text-muted-foreground mb-5 text-center max-w-xs">
-          or click the button below to browse your files
+          Take a new photo or choose one from your library
         </p>
-        <div className="relative inline-flex">
-          <Button className="gap-2">
-            <ImageIcon className="h-4 w-4" />
-            Choose Photo
-          </Button>
-          <input
-            type="file"
-            accept="image/*"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            onChange={handleInputChange}
-            data-testid="input-file-upload"
-          />
+        <div className="flex gap-3">
+          <div className="relative inline-flex">
+            <Button className="gap-2">
+              <Camera className="h-4 w-4" />
+              Take Photo
+            </Button>
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              data-testid="input-file-camera"
+            />
+          </div>
+          <div className="relative inline-flex">
+            <Button variant="outline" className="gap-2">
+              <ImageIcon className="h-4 w-4" />
+              Library
+            </Button>
+            <input
+              ref={uploadRef}
+              type="file"
+              accept="image/*"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              data-testid="input-file-upload"
+            />
+          </div>
         </div>
         <p className="text-xs text-muted-foreground mt-5">
           JPG, PNG, or WebP up to 20 MB
