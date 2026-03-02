@@ -174,6 +174,7 @@ export default function Create() {
   }, [editingDogId, speciesParam]);
 
   useEffect(() => {
+    if (speciesConfirmed) return;
     const resolvedOrg = targetOrg || myOrg;
     if (!editingDogId && !speciesParam && resolvedOrg) {
       if (orgSpecies === "cats") {
@@ -182,12 +183,9 @@ export default function Create() {
       } else if (orgSpecies === "dogs") {
         setSpecies("dog");
         setSpeciesConfirmed(true);
-      } else if (orgSpecies === "both") {
-        setSpecies(null);
-        setSpeciesConfirmed(false);
       }
     }
-  }, [orgSpecies, editingDogId, speciesParam, myOrg, targetOrg]);
+  }, [orgSpecies, editingDogId, speciesParam, myOrg, targetOrg, speciesConfirmed]);
 
   const handleSpeciesSelect = (s: "dog" | "cat") => {
     if (s !== species) {
