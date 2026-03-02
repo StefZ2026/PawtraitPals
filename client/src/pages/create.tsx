@@ -42,11 +42,12 @@ export default function Create() {
   const orgParam = params.get("org");
   const speciesParam = params.get("species") as "dog" | "cat" | null;
 
+  const hasPendingUpload = !!sessionStorage.getItem("pending_upload_image");
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (!authLoading && !isAuthenticated && !hasPendingUpload) {
       window.location.href = "/login";
     }
-  }, [isAuthenticated, authLoading]);
+  }, [isAuthenticated, authLoading, hasPendingUpload]);
 
   const { data: existingDog } = useQuery<any>({
     queryKey: ["/api/dogs", editingDogId],
