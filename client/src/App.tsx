@@ -25,6 +25,7 @@ import Privacy from "@/pages/privacy";
 import Terms from "@/pages/terms";
 import SmsOptIn from "@/pages/sms-opt-in";
 import ImportPets from "@/pages/import-pets";
+import UploadPhoto from "@/pages/upload-photo";
 
 function Router() {
   return (
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/onboarding/:orgId" component={Onboarding} />
       <Route path="/create" component={Create} />
+      <Route path="/upload-photo" component={UploadPhoto} />
       <Route path="/gallery" component={Gallery} />
       <Route path="/styles" component={Styles} />
       <Route path="/pawfile/:id" component={DogProfile} />
