@@ -30,6 +30,8 @@ interface ShareButtonsProps {
   dogName?: string;
   dogBreed?: string;
   orgId?: number;
+  /** Portrait image URL to attach as MMS picture */
+  portraitImageUrl?: string;
   /** Pet's adoption page URL (e.g. Petfinder, Adopt-a-Pet, rescue site) */
   adoptionUrl?: string;
   /** Rescue organization's website URL */
@@ -40,7 +42,7 @@ interface ShareButtonsProps {
   showcaseName?: string;
 }
 
-export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId, adoptionUrl, orgWebsiteUrl, captureRef, showcaseName }: ShareButtonsProps) {
+export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId, portraitImageUrl, adoptionUrl, orgWebsiteUrl, captureRef, showcaseName }: ShareButtonsProps) {
   const { toast } = useToast();
   const { session, isAuthenticated } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -96,7 +98,7 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ to: phoneNumber, message: smsBody }),
+        body: JSON.stringify({ to: phoneNumber, message: smsBody, mediaUrl: portraitImageUrl || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send");
