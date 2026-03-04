@@ -1,15 +1,20 @@
 import type { Express, Request, Response } from "express";
+import sharp from "sharp";
 import { isAuthenticated } from "../auth";
 import { smsRateLimiter } from "./helpers";
-import { uploadToStorage, isDataUri } from "../supabase-storage";
+import { uploadToStorage, fetchImageAsBuffer, isDataUri } from "../supabase-storage";
 
 export interface SmsSendResult {
   success: boolean;
   error?: string;
   provider?: "twilio" | "telnyx";
+  messageId?: string;
+  delivered?: boolean;
+  queued?: boolean;
+  retrying?: boolean;
 }
 
-function formatPhoneNumber(raw: string): string {
+export function formatPhoneNumber(raw: string): string {
   const cleaned = raw.replace(/[\s\-().]/g, "");
   return cleaned.startsWith("+") ? cleaned :
          cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
@@ -29,6 +34,153 @@ function isTelnyxConfigured(): boolean {
 
 export function isSmsConfigured(): boolean {
   return isTwilioConfigured() || isTelnyxConfigured();
+}
+
+// --- Per-recipient send tracking (spam filter prevention) ---
+const recentSends = new Map<string, number[]>();
+const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const MAX_SENDS_BEFORE_DELAY = 3;
+const DELAY_MS = 10 * 60 * 1000; // 10 min delay
+
+function recordSend(phone: string): void {
+  const now = Date.now();
+  const timestamps = recentSends.get(phone) || [];
+  timestamps.push(now);
+  recentSends.set(phone, timestamps.filter(t => now - t < RATE_WINDOW_MS));
+}
+
+function getRecentSendCount(phone: string): number {
+  const now = Date.now();
+  const timestamps = recentSends.get(phone) || [];
+  const recent = timestamps.filter(t => now - t < RATE_WINDOW_MS);
+  recentSends.set(phone, recent);
+  return recent.length;
+}
+
+// --- Retry queue for carrier-rejected messages ---
+interface RetryEntry {
+  phone: string;
+  body: string;
+  mediaUrl?: string;
+  attempts: number;
+  status: "pending" | "delivered" | "failed";
+  lastError?: string;
+}
+
+const retryQueue = new Map<string, RetryEntry>();
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 15 * 60 * 1000; // 15 min
+
+export function getRetryStatus(messageId: string): RetryEntry | undefined {
+  return retryQueue.get(messageId);
+}
+
+function scheduleRetry(messageId: string, entry: RetryEntry): void {
+  console.log(`[sms] Carrier rejected ${messageId} to ${entry.phone}, queuing retry ${entry.attempts + 1}/${MAX_RETRY_ATTEMPTS} in 15min`);
+  entry.attempts++;
+  retryQueue.set(messageId, entry);
+
+  setTimeout(async () => {
+    try {
+      console.log(`[sms] Retrying ${messageId} to ${entry.phone} (attempt ${entry.attempts})`);
+      const result = await sendViaTelnyx(entry.phone, entry.body, entry.mediaUrl);
+      if (!result.success || !result.messageId) {
+        console.warn(`[sms] Retry send failed for ${messageId}: ${result.error}`);
+        if (entry.attempts < MAX_RETRY_ATTEMPTS) {
+          scheduleRetry(messageId, entry);
+        } else {
+          entry.status = "failed";
+          entry.lastError = result.error || "All retries exhausted";
+          retryQueue.set(messageId, entry);
+          console.error(`[sms] All retries exhausted for ${messageId} to ${entry.phone}`);
+        }
+        return;
+      }
+
+      // Poll for delivery status on the retry
+      const deliveryStatus = await pollDeliveryStatus(result.messageId);
+      if (deliveryStatus === "delivered") {
+        entry.status = "delivered";
+        retryQueue.set(messageId, entry);
+        console.log(`[sms] Retry delivered! ${messageId} to ${entry.phone}`);
+      } else if (deliveryStatus === "failed" && entry.attempts < MAX_RETRY_ATTEMPTS) {
+        scheduleRetry(messageId, entry);
+      } else {
+        entry.status = "failed";
+        entry.lastError = "Carrier rejected after retry";
+        retryQueue.set(messageId, entry);
+      }
+    } catch (err: any) {
+      console.error(`[sms] Retry error for ${messageId}: ${err.message}`);
+      if (entry.attempts < MAX_RETRY_ATTEMPTS) {
+        scheduleRetry(messageId, entry);
+      } else {
+        entry.status = "failed";
+        entry.lastError = err.message;
+        retryQueue.set(messageId, entry);
+      }
+    }
+  }, RETRY_DELAY_MS);
+}
+
+// Cleanup stale retry entries every 30 min
+setInterval(() => {
+  const retryIds = Array.from(retryQueue.keys());
+  for (const id of retryIds) {
+    const entry = retryQueue.get(id)!;
+    if (entry.status !== "pending") {
+      retryQueue.delete(id);
+    }
+  }
+  const now = Date.now();
+  const phones = Array.from(recentSends.keys());
+  for (const phone of phones) {
+    const timestamps = recentSends.get(phone)!;
+    const recent = timestamps.filter((t: number) => now - t < RATE_WINDOW_MS);
+    if (recent.length === 0) recentSends.delete(phone);
+    else recentSends.set(phone, recent);
+  }
+}, 30 * 60 * 1000);
+
+// --- Poll Telnyx for actual delivery status ---
+async function pollDeliveryStatus(messageId: string): Promise<"delivered" | "failed" | "unknown"> {
+  const apiKey = process.env.TELNYX_API_KEY!;
+  const MAX_POLLS = 6;
+  const POLL_INTERVAL_MS = 3000;
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+    try {
+      const res = await fetch(`https://api.telnyx.com/v2/messages/${messageId}`, {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+      });
+
+      if (!res.ok) {
+        console.warn(`[sms] Poll ${i + 1}/${MAX_POLLS} failed: HTTP ${res.status}`);
+        continue;
+      }
+
+      const data = await res.json() as any;
+      const status = data.data?.to?.[0]?.status;
+
+      if (status === "delivered") {
+        console.log(`[sms] Delivery confirmed for ${messageId} (poll ${i + 1})`);
+        return "delivered";
+      }
+      if (status === "delivery_failed" || status === "sending_failed") {
+        const errors = data.data?.errors || [];
+        console.warn(`[sms] Delivery failed for ${messageId}: status=${status}, errors=${JSON.stringify(errors)}`);
+        return "failed";
+      }
+      console.log(`[sms] Poll ${i + 1}/${MAX_POLLS} for ${messageId}: status=${status}`);
+    } catch (err: any) {
+      console.warn(`[sms] Poll error for ${messageId}: ${err.message}`);
+    }
+  }
+
+  console.warn(`[sms] Polling timed out for ${messageId} after ${MAX_POLLS} attempts`);
+  return "unknown";
 }
 
 async function sendViaTwilio(phone: string, body: string, mediaUrl?: string): Promise<SmsSendResult> {
@@ -88,49 +240,108 @@ async function sendViaTelnyx(phone: string, body: string, mediaUrl?: string): Pr
   }
 
   const data = await res.json() as any;
+  const messageId = data.data?.id;
   const status = data.data?.to?.[0]?.status;
   if (status === "delivery_failed") {
     const errDetail = data.data?.errors?.[0]?.detail || "Delivery failed";
-    return { success: false, error: `Telnyx: ${errDetail}`, provider: "telnyx" };
+    return { success: false, error: `Telnyx: ${errDetail}`, provider: "telnyx", messageId };
   }
 
-  return { success: true, provider: "telnyx" };
+  return { success: true, provider: "telnyx", messageId };
 }
 
 export async function sendSms(to: string, body: string, mediaUrl?: string): Promise<SmsSendResult> {
   const phone = formatPhoneNumber(to);
   const errors: string[] = [];
 
-  // Convert base64 data URIs to HTTPS URLs via Supabase Storage
-  // Telnyx/Twilio require publicly accessible HTTPS URLs for MMS
-  if (mediaUrl && isDataUri(mediaUrl)) {
+  // Compress portrait to MMS-friendly JPEG and upload to Supabase Storage
+  // Full-quality PNGs (1.5MB+) exceed carrier MMS limits (~600KB-1.2MB)
+  if (mediaUrl) {
     try {
-      const filename = `mms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-      mediaUrl = await uploadToStorage(mediaUrl, "portraits", filename);
-      console.log(`[sms] Converted data URI to HTTPS: ${mediaUrl}`);
+      const imgBuffer = await fetchImageAsBuffer(mediaUrl);
+      const compressed = await sharp(imgBuffer).jpeg({ quality: 75 }).toBuffer();
+      const fname = `mms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const dataUri = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+      mediaUrl = await uploadToStorage(dataUri, "portraits", fname);
+      console.log(`[sms] Compressed ${imgBuffer.length}B -> ${compressed.length}B, uploaded: ${mediaUrl}`);
     } catch (err: any) {
-      console.warn(`[sms] Failed to upload media for MMS: ${err.message}`);
-      mediaUrl = undefined;
+      console.error(`[sms] Failed to prepare MMS image: ${err.message}`);
+      return { success: false, error: `Failed to process portrait image: ${err.message}` };
     }
   }
 
+  // Check per-recipient rate — delay if we've sent too many recently
+  const recentCount = getRecentSendCount(phone);
+  if (recentCount >= MAX_SENDS_BEFORE_DELAY) {
+    console.log(`[sms] ${recentCount} recent sends to ${phone}, queueing with ${DELAY_MS / 60000}min delay`);
+    const queueId = `queued-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entry: RetryEntry = { phone, body, mediaUrl, attempts: 0, status: "pending" };
+    retryQueue.set(queueId, entry);
+
+    setTimeout(async () => {
+      try {
+        console.log(`[sms] Sending delayed message ${queueId} to ${phone}`);
+        recordSend(phone);
+        const result = await sendViaTelnyx(phone, body, mediaUrl);
+        if (result.success && result.messageId) {
+          const deliveryStatus = await pollDeliveryStatus(result.messageId);
+          entry.status = deliveryStatus === "failed" ? "failed" : "delivered";
+          if (deliveryStatus === "failed" && entry.attempts < MAX_RETRY_ATTEMPTS) {
+            scheduleRetry(queueId, entry);
+          }
+        } else {
+          entry.status = "failed";
+          entry.lastError = result.error;
+        }
+        retryQueue.set(queueId, entry);
+      } catch (err: any) {
+        entry.status = "failed";
+        entry.lastError = err.message;
+        retryQueue.set(queueId, entry);
+      }
+    }, DELAY_MS);
+
+    return { success: true, queued: true, messageId: queueId };
+  }
+
+  // Record this send for rate tracking
+  recordSend(phone);
+
   // Telnyx first — 10DLC campaign is ACTIVE and delivering
-  // Twilio campaigns are still in review and silently drop messages
   if (isTelnyxConfigured()) {
     try {
       const result = await sendViaTelnyx(phone, body, mediaUrl);
-      if (result.success) {
-        console.log(`[sms] Sent via Telnyx to ${phone}${mediaUrl ? ' (MMS)' : ''}`);
-        return result;
+      if (result.success && result.messageId) {
+        console.log(`[sms] Accepted by Telnyx: ${result.messageId} to ${phone}${mediaUrl ? ' (MMS)' : ''}`);
+
+        // Poll for actual delivery confirmation
+        const deliveryStatus = await pollDeliveryStatus(result.messageId);
+
+        if (deliveryStatus === "delivered") {
+          return { success: true, delivered: true, provider: "telnyx", messageId: result.messageId };
+        }
+
+        if (deliveryStatus === "failed") {
+          // Carrier rejected — schedule auto-retry
+          const entry: RetryEntry = { phone, body, mediaUrl, attempts: 0, status: "pending" };
+          scheduleRetry(result.messageId, entry);
+          return { success: false, error: "Carrier rejected the message", retrying: true, messageId: result.messageId, provider: "telnyx" };
+        }
+
+        // Unknown (polling timed out) — carrier hasn't responded yet
+        return { success: true, delivered: false, provider: "telnyx", messageId: result.messageId };
       }
-      console.warn(`[sms] Telnyx failed: ${result.error}`);
-      errors.push(result.error || "Telnyx failed");
+      if (result.error) {
+        console.warn(`[sms] Telnyx failed: ${result.error}`);
+        errors.push(result.error);
+      }
     } catch (err: any) {
       console.warn(`[sms] Telnyx error: ${err.message}`);
       errors.push(`Telnyx: ${err.message}`);
     }
   }
 
+  // Fall back to Twilio
   if (isTwilioConfigured()) {
     try {
       const result = await sendViaTwilio(phone, body, mediaUrl);
@@ -170,16 +381,40 @@ export function registerSmsRoutes(app: Express): void {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
 
-      const result = await sendSms(cleaned, message, mediaUrl || undefined);
+      const phone = formatPhoneNumber(cleaned);
+      const result = await sendSms(phone, message, mediaUrl || undefined);
 
-      if (!result.success) {
-        throw new Error(result.error || "Failed to send text message");
+      if (result.queued) {
+        return res.json({ success: true, queued: true, messageId: result.messageId });
       }
 
-      res.json({ success: true, provider: result.provider });
+      if (result.retrying) {
+        return res.json({ success: false, retrying: true, messageId: result.messageId, error: result.error });
+      }
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Failed to send text message" });
+      }
+
+      res.json({ success: true, delivered: result.delivered, messageId: result.messageId });
     } catch (error: any) {
       console.error("SMS send error:", error);
       res.status(500).json({ error: "Failed to send text message" });
     }
+  });
+
+  // Check delivery status for retrying/queued messages
+  app.get("/api/sms-status/:messageId", isAuthenticated, (req: any, res: Response) => {
+    const { messageId } = req.params;
+    const entry = getRetryStatus(messageId);
+
+    if (!entry) {
+      return res.json({ status: "unknown" });
+    }
+
+    res.json({
+      status: entry.status,
+      error: entry.lastError,
+    });
   });
 }

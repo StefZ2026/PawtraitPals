@@ -84,6 +84,34 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
     window.open(href, "_blank", "noopener,noreferrer,width=600,height=500");
   };
 
+  // Poll for retry delivery status and notify user
+  const pollRetryStatus = (messageId: string, phone: string) => {
+    let polls = 0;
+    const maxPolls = 60; // 30 min at 30s intervals
+    const interval = setInterval(async () => {
+      polls++;
+      if (polls > maxPolls) {
+        clearInterval(interval);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/sms-status/${messageId}`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        const data = await res.json();
+        if (data.status === "delivered") {
+          clearInterval(interval);
+          toast({ title: "Text Delivered!", description: `Your text to ${phone} was delivered.` });
+        } else if (data.status === "failed") {
+          clearInterval(interval);
+          toast({ title: "Text Failed", description: `Could not deliver text to ${phone} after multiple attempts.`, variant: "destructive" });
+        }
+      } catch {
+        // Ignore poll errors, keep trying
+      }
+    }, 30000);
+  };
+
   const handleSendSms = async () => {
     if (!phoneNumber.trim()) return;
     if (!session?.access_token) {
@@ -91,7 +119,11 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
       return;
     }
     setSending(true);
+    const targetPhone = phoneNumber;
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+
       const res = await fetch("/api/send-sms", {
         method: "POST",
         headers: {
@@ -99,14 +131,42 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
           Authorization: `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({ to: phoneNumber, message: smsBody, mediaUrl: portraitImageUrl || undefined }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const data = await res.json();
+
+      if (data.queued) {
+        toast({ title: "Message Queued", description: "Will deliver in a few minutes to avoid carrier limits." });
+        if (data.messageId) pollRetryStatus(data.messageId, targetPhone);
+        setSmsOpen(false);
+        setPhoneNumber("");
+        return;
+      }
+
+      if (data.retrying) {
+        toast({ title: "Text failed — will retry shortly and notify upon delivery.", description: `Retrying delivery to ${targetPhone}.`, variant: "destructive" });
+        if (data.messageId) pollRetryStatus(data.messageId, targetPhone);
+        setSmsOpen(false);
+        setPhoneNumber("");
+        return;
+      }
+
       if (!res.ok) throw new Error(data.error || "Failed to send");
-      toast({ title: "Text Sent!", description: `Message sent to ${phoneNumber}` });
+
+      if (data.delivered) {
+        toast({ title: "Text Delivered!", description: `Message delivered to ${targetPhone}` });
+      } else {
+        toast({ title: "Text Sent!", description: `Message sent to ${targetPhone}` });
+      }
       setSmsOpen(false);
       setPhoneNumber("");
     } catch (err: any) {
-      toast({ title: "Failed to Send", description: err.message, variant: "destructive" });
+      if (err.name === "AbortError") {
+        toast({ title: "Sending is taking longer than expected", description: "The message may still be delivered.", variant: "destructive" });
+      } else {
+        toast({ title: "Failed to Send", description: err.message, variant: "destructive" });
+      }
     } finally {
       setSending(false);
     }
@@ -114,7 +174,6 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
 
   const handleIgButtonClick = async () => {
     if (!captureRef?.current) return;
-    // Always capture the full card (pawfile or showcase) — it has all the info
     try {
       toast({ title: "Capturing image...", description: "Please wait." });
       const { toPng } = await import("html-to-image");
@@ -141,7 +200,6 @@ export function ShareButtons({ url, title, text, dogId, dogName, dogBreed, orgId
       if (!capturedImage || !orgId) {
         throw new Error("Nothing to post");
       }
-      // Always send the captured image — it's the full pawfile/showcase card
       const body = { orgId, image: capturedImage, caption: igCaption };
       const res = await fetch(`${IG_PREFIX}/post`, {
         method: "POST",
