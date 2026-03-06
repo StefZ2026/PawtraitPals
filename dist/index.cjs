@@ -366,13 +366,28 @@ var init_petfinder = __esm({
 });
 
 // server/import/rescuegroups.ts
-async function rescuegroupsGet(path5) {
+function decodeHtmlEntities(text2) {
+  if (!text2) return text2;
+  let result = text2.replace(/&[a-zA-Z]+;/g, (entity) => {
+    return HTML_ENTITIES[entity.toLowerCase()] ?? entity;
+  });
+  result = result.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+  result = result.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  result = result.replace(/<[^>]+>/g, "");
+  result = result.replace(/\s+/g, " ").trim();
+  return result;
+}
+function getApiKey() {
   const apiKey = process.env.RESCUEGROUPS_API_KEY;
-  if (!apiKey) {
-    throw new Error("RescueGroups API key not configured");
-  }
+  if (!apiKey) throw new Error("RescueGroups API key not configured");
+  return apiKey;
+}
+async function rescuegroupsGet(path5) {
   const res = await fetch(`https://api.rescuegroups.org/v5${path5}`, {
-    headers: { Authorization: apiKey }
+    headers: {
+      Authorization: getApiKey(),
+      "Content-Type": "application/vnd.api+json"
+    }
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -380,74 +395,228 @@ async function rescuegroupsGet(path5) {
   }
   return res.json();
 }
-function extractTags2(animal) {
+async function rescuegroupsPost(path5, body) {
+  const res = await fetch(`https://api.rescuegroups.org/v5${path5}`, {
+    method: "POST",
+    headers: {
+      Authorization: getApiKey(),
+      "Content-Type": "application/vnd.api+json"
+    },
+    body: JSON.stringify({ data: body })
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`RescueGroups API error ${res.status}: ${errBody}`);
+  }
+  return res.json();
+}
+function buildIncludedMaps(included) {
+  const species = {};
+  const statuses = {};
+  const pictures = {};
+  for (const inc of included) {
+    if (inc.type === "species") {
+      species[inc.id] = inc.attributes?.singular || "Unknown";
+    } else if (inc.type === "statuses") {
+      statuses[inc.id] = inc.attributes?.name || "Unknown";
+    } else if (inc.type === "pictures") {
+      const pa = inc.attributes || {};
+      pictures[inc.id] = {
+        large: pa.large?.url || null,
+        original: pa.original?.url || null
+      };
+    }
+  }
+  return { species, statuses, pictures };
+}
+function getRelationshipId(animal, relName) {
+  const data = animal.relationships?.[relName]?.data;
+  if (Array.isArray(data) && data.length > 0) return data[0].id;
+  return null;
+}
+function getRelationshipIds(animal, relName) {
+  const data = animal.relationships?.[relName]?.data;
+  if (Array.isArray(data)) return data.map((d) => d.id);
+  return [];
+}
+function extractTags2(attrs) {
   const tags = [];
-  const attrs = animal.attributes || {};
   if (attrs.breedPrimary) tags.push(attrs.breedPrimary);
   if (attrs.breedSecondary) tags.push(attrs.breedSecondary);
   if (attrs.colorDetails) tags.push(attrs.colorDetails);
   if (attrs.sizeGroup) tags.push(attrs.sizeGroup);
   if (attrs.ageGroup) tags.push(attrs.ageGroup);
   if (attrs.sex) tags.push(attrs.sex);
-  if (attrs.isHousetrained) tags.push("House Trained");
-  if (attrs.isSpecialNeeds) tags.push("Special Needs");
-  if (attrs.isMicrochipped) tags.push("Microchipped");
-  if (attrs.isOKWithDogs) tags.push("Good with Dogs");
-  if (attrs.isOKWithCats) tags.push("Good with Cats");
-  if (attrs.isOKWithKids) tags.push("Good with Kids");
+  if (attrs.isHousetrained === true) tags.push("House Trained");
+  if (attrs.isSpecialNeeds === true) tags.push("Special Needs");
+  if (attrs.isMicrochipped === true) tags.push("Microchipped");
+  if (attrs.isSpayedNeutered === true) tags.push("Spayed/Neutered");
+  if (attrs.isCurrentVaccinations === true) tags.push("Vaccinations Current");
+  if (attrs.isOKWithDogs === true) tags.push("Good with Dogs");
+  if (attrs.isOKWithCats === true) tags.push("Good with Cats");
+  if (attrs.isOKWithKids === true) tags.push("Good with Kids");
   return [...new Set(tags)];
 }
-function normalizeAnimal2(animal) {
+function normalizeAnimal2(animal, maps, speciesOverride) {
   const attrs = animal.attributes || {};
-  const species = (attrs.species || "").toLowerCase();
+  let species = speciesOverride || "dog";
+  if (!speciesOverride) {
+    const speciesId = getRelationshipId(animal, "species");
+    if (speciesId) {
+      const speciesName = (maps.species[speciesId] || "").toLowerCase();
+      species = speciesName === "cat" ? "cat" : "dog";
+    } else {
+      const slug = (attrs.slug || "").toLowerCase();
+      const searchStr = (attrs.searchString || "").toLowerCase();
+      if (slug.includes("-cat") || searchStr.includes(" cats ")) {
+        species = "cat";
+      }
+    }
+  }
   const photos = [];
-  if (attrs.pictureThumbnailUrl) photos.push(attrs.pictureThumbnailUrl);
+  const picIds = getRelationshipIds(animal, "pictures");
+  for (const picId of picIds) {
+    const pic = maps.pictures[picId];
+    if (pic) {
+      const url = pic.original || pic.large;
+      if (url) photos.push(url);
+    }
+  }
+  if (photos.length === 0 && attrs.pictureThumbnailUrl) {
+    photos.push(attrs.pictureThumbnailUrl);
+  }
   return {
     externalId: String(animal.id),
-    name: attrs.name || "Unknown",
-    species: species === "cat" ? "cat" : "dog",
+    name: decodeHtmlEntities(attrs.name) || "Unknown",
+    species,
     breed: attrs.breedPrimary || null,
     age: attrs.ageGroup || attrs.ageString || null,
-    description: attrs.descriptionText || attrs.description || null,
+    description: decodeHtmlEntities(attrs.descriptionText || attrs.description) || null,
     photos,
     adoptionUrl: attrs.url || null,
-    isAvailable: (attrs.status || "").toLowerCase() === "available",
-    tags: extractTags2(animal)
+    isAvailable: true,
+    // we only fetch from the /available/ endpoints
+    tags: extractTags2(attrs)
   };
 }
-var rescuegroupsProvider;
+async function fetchAvailablePage(endpoint, orgId, page, speciesOverride) {
+  const data = await rescuegroupsPost(
+    `${endpoint}?include=species,statuses,pictures&limit=100&page=${page}`,
+    {
+      filters: [
+        { fieldName: "orgs.id", operation: "equal", criteria: orgId }
+      ]
+    }
+  );
+  const maps = buildIncludedMaps(data.included || []);
+  const animals = (data.data || []).map(
+    (a) => normalizeAnimal2(a, maps, speciesOverride)
+  );
+  const totalPages = data.meta?.pages || 1;
+  return { animals, totalPages };
+}
+async function countAvailableAnimals(orgId) {
+  try {
+    const [dogsRes, catsRes] = await Promise.all([
+      rescuegroupsPost("/public/animals/search/available/dogs?limit=1", {
+        filters: [{ fieldName: "orgs.id", operation: "equal", criteria: orgId }]
+      }),
+      rescuegroupsPost("/public/animals/search/available/cats?limit=1", {
+        filters: [{ fieldName: "orgs.id", operation: "equal", criteria: orgId }]
+      })
+    ]);
+    return (dogsRes.meta?.count || 0) + (catsRes.meta?.count || 0);
+  } catch {
+    return 0;
+  }
+}
+var HTML_ENTITIES, rescuegroupsProvider;
 var init_rescuegroups = __esm({
   "server/import/rescuegroups.ts"() {
     "use strict";
+    HTML_ENTITIES = {
+      "&amp;": "&",
+      "&lt;": "<",
+      "&gt;": ">",
+      "&quot;": '"',
+      "&apos;": "'",
+      "&nbsp;": " ",
+      "&rsquo;": "\u2019",
+      "&lsquo;": "\u2018",
+      "&rdquo;": "\u201C",
+      "&ldquo;": "\u201D",
+      "&mdash;": "\u2014",
+      "&ndash;": "\u2013",
+      "&hellip;": "\u2026",
+      "&bull;": "\u2022",
+      "&copy;": "\xA9",
+      "&reg;": "\xAE",
+      "&trade;": "\u2122"
+    };
     rescuegroupsProvider = {
       name: "rescuegroups",
-      async searchOrganizations(query) {
-        const encodedQuery = encodeURIComponent(query);
-        const data = await rescuegroupsGet(
-          `/public/orgs?filter[name]=${encodedQuery}&limit=20`
-        );
-        return (data.data || []).map((org) => ({
+      async searchOrganizations(query, location) {
+        const postalCode = (location || "").trim();
+        let allOrgs = [];
+        if (postalCode) {
+          const data = await rescuegroupsPost("/public/orgs/search", {
+            filterRadius: {
+              postalcode: postalCode,
+              miles: 50
+            }
+          });
+          allOrgs = data.data || [];
+        } else {
+          const data = await rescuegroupsGet("/public/orgs?limit=250");
+          allOrgs = data.data || [];
+        }
+        let results = allOrgs.map((org) => ({
           externalId: String(org.id),
           name: org.attributes?.name || "Unknown",
           location: org.attributes?.city && org.attributes?.state ? `${org.attributes.city}, ${org.attributes.state}` : null,
           website: org.attributes?.url || null
         }));
+        if (query.trim()) {
+          const q = query.trim().toLowerCase();
+          results = results.filter((org) => org.name.toLowerCase().includes(q));
+        }
+        const candidates = results.slice(0, 50);
+        const withCounts = await Promise.all(
+          candidates.map(async (org) => ({
+            ...org,
+            animalCount: await countAvailableAnimals(org.externalId)
+          }))
+        );
+        return withCounts.filter((org) => org.animalCount > 0);
+      },
+      async getOrganization(orgId) {
+        const data = await rescuegroupsGet(`/public/orgs/${orgId}`);
+        const raw = data.data;
+        const org = Array.isArray(raw) ? raw[0] : raw;
+        if (!org) throw new Error("Organization not found");
+        return {
+          externalId: String(org.id),
+          name: org.attributes?.name || "Unknown",
+          location: org.attributes?.city && org.attributes?.state ? `${org.attributes.city}, ${org.attributes.state}` : null,
+          website: org.attributes?.url || null
+        };
       },
       async fetchAnimals(orgId) {
-        const animals = [];
-        let page = 1;
+        const allAnimals = [];
         const maxPages = 10;
-        while (page <= maxPages) {
-          const data = await rescuegroupsGet(
-            `/public/animals?filter[orgID]=${orgId}&filter[status]=Available&limit=100&page=${page}`
-          );
-          const batch = (data.data || []).map(normalizeAnimal2);
-          animals.push(...batch);
-          const totalPages = data.meta?.pages || 1;
-          if (page >= totalPages) break;
-          page++;
+        for (const { endpoint, species } of [
+          { endpoint: "/public/animals/search/available/dogs", species: "dog" },
+          { endpoint: "/public/animals/search/available/cats", species: "cat" }
+        ]) {
+          let page = 1;
+          while (page <= maxPages) {
+            const { animals, totalPages } = await fetchAvailablePage(endpoint, orgId, page, species);
+            allAnimals.push(...animals);
+            if (page >= totalPages) break;
+            page++;
+          }
         }
-        return animals;
+        return allAnimals;
       }
     };
   }
@@ -971,7 +1140,7 @@ function registerAuthRoutes(app2) {
       });
       if (error) {
         console.error("Signup error:", error.message);
-        return res.status(400).json({ error: error.message });
+        return res.status(400).json({ error: "Failed to create account. Please try again." });
       }
       try {
         const { pool: pool2 } = await Promise.resolve().then(() => (init_db(), db_exports));
@@ -1638,6 +1807,14 @@ async function getOrgForUser(req, orgIdParam) {
   }
   return storage.getOrganizationByOwner(userId);
 }
+function getBaseUrl(req) {
+  if (req) {
+    const host = req.headers["x-forwarded-host"] || req.headers["host"];
+    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+    if (host) return `${proto}://${host}`;
+  }
+  return process.env.APP_URL || "https://pawtraitpals.com";
+}
 
 // server/routes/startup.ts
 var ADMIN_EMAIL2 = process.env.ADMIN_EMAIL;
@@ -2204,9 +2381,7 @@ function containsInappropriateLanguage(text2) {
   const stripped = text2.toLowerCase().replace(/[^a-z\s]/g, "");
   if (blockedPatterns.some((p) => p.test(stripped))) return true;
   const normalized = normalizeText(text2);
-  if (blockedWords.some((w) => normalized.includes(w))) return true;
-  const spaceless = text2.toLowerCase().replace(/[\s._\-*!@#$%^&()]/g, "");
-  if (blockedWords.some((w) => spaceless.includes(w))) return true;
+  if (blockedPatterns.some((p) => p.test(normalized))) return true;
   return false;
 }
 
@@ -2826,7 +3001,7 @@ function registerDogRoutes(app2) {
       }
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("Error creating pet:", errMsg, error);
-      res.status(500).json({ error: `Failed to save pet: ${errMsg}` });
+      res.status(500).json({ error: "Failed to save pet" });
     }
   });
   app2.patch("/api/dogs/:id", isAuthenticated, async (req, res) => {
@@ -2869,7 +3044,7 @@ function registerDogRoutes(app2) {
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("Error updating pet:", errMsg, error);
-      res.status(500).json({ error: `Failed to update pet: ${errMsg}` });
+      res.status(500).json({ error: "Failed to update pet" });
     }
   });
   app2.delete("/api/dogs/:id", isAuthenticated, async (req, res) => {
@@ -3005,38 +3180,23 @@ async function callWithRetry(fn, label) {
 }
 async function generateImage(prompt, sourceImage) {
   if (sourceImage) {
-    try {
-      const result = await generateWithImage(prompt, sourceImage);
-      if (result) return result;
-    } catch {
-    }
+    const result = await generateWithImage(prompt, sourceImage);
+    if (result) return result;
+    throw new Error("Image generation with reference photo returned no result. Please try again.");
   }
   return generateTextOnly(prompt);
 }
-var FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED \u2014 THE PHOTO IS THE GROUND TRUTH.
-Study the attached photo carefully. This is the EXACT animal you must depict.
+var FIDELITY_PREFIX = `REFERENCE PHOTO ATTACHED \u2014 YOU MUST DEPICT THIS EXACT ANIMAL.
 
-CRITICAL RULE \u2014 PHOTO OVERRIDES TEXT:
-The style description below may mention a breed name (e.g., "Beagle", "Labrador", "Persian cat"). IGNORE any breed name in the text if it does not match what you see in the photo. The PHOTO is the sole authority on what this animal looks like. If the text says "Beagle" but the photo shows a Chow Chow, you MUST depict a Chow Chow. If the text says "Tabby" but the photo shows a Siamese, you MUST depict a Siamese. NEVER generate an animal that matches the text breed instead of the photo \u2014 the photo always wins.
+MANDATORY RULES (violating any rule = total failure):
+1. SINGLE ANIMAL ONLY \u2014 depict ONLY the one animal from the reference photo. Never add extra animals, companions, or duplicates to the scene.
+2. PHOTO OVERRIDES TEXT \u2014 if the text mentions a breed that doesn't match the photo, depict what you SEE in the photo. The photo is always the sole authority.
+3. EXACT COLORS AND PATTERNS \u2014 reproduce each color exactly where it appears on the body. White chest stays white, dark back stays dark, patches stay in the same locations and proportions. Do NOT simplify a multi-colored coat into one uniform tone. Do NOT shift colors to match "typical breed" palettes or scene lighting.
+4. PRESERVE UNIQUE FEATURES \u2014 floppy ears stay floppy, perked ears stay perked. If ears are asymmetric (one up, one down; one folded, one straight), keep them asymmetric. Underbites, crooked tails, scars, heterochromia, unusual markings \u2014 reproduce them ALL exactly. Do NOT "fix" or normalize any feature to match breed standard.
+5. PRESERVE FACE AND BODY \u2014 match this animal's exact muzzle shape, eye color, ear shape and position, fur texture and length, and body proportions from the photo.
+6. PHOTOREALISTIC ANIMAL \u2014 the animal must look like a real, living creature with photorealistic fur, natural eyes, and real anatomy. Apply the artistic style to the scene, costume, and background \u2014 but the animal itself must always look like a genuine photograph of a real animal.
 
-COLOR AND PATTERN MATCHING IS THE #1 PRIORITY:
-Most animals are NOT one uniform color. Study WHERE each color appears on this specific animal's body:
-- Note which areas are lighter vs darker (chest, belly, legs, face, back, ears, tail)
-- Note any two-tone or multi-tone patterns \u2014 e.g., white chest with reddish back, dark face with lighter body, tabby stripes, tuxedo markings, brindle patterns
-- Note the EXACT boundaries where one color transitions to another
-You must reproduce the PRECISE color of EACH body area \u2014 not a uniform "average" color, not a "typical" breed color, not a slightly different shade. If the chest is white and the back is reddish, the portrait must show a white chest and a reddish back in those same proportions. If there are patches, spots, or gradients, they must appear in the same locations. Do NOT simplify a multi-colored coat into one uniform tone. Do NOT let the artistic style, scene lighting, or background colors influence or shift the animal's actual coat colors.
-
-You MUST also faithfully reproduce THIS SPECIFIC animal's:
-- Face shape, muzzle, and facial structure
-- Ear shape, size, and positioning
-- Fur/coat texture and length
-- Eye color and shape
-- Body size and proportions
-- Any unique distinguishing features (spots, patches, scars, etc.)
-
-DO NOT substitute a generic or different-looking animal. DO NOT default to a "breed typical" appearance. The generated portrait must be unmistakably recognizable as the SAME individual animal in the reference photo.
-
-Now apply the following artistic style while preserving this exact animal's appearance, coloring, and color distribution:
+Now apply the following artistic style to this exact animal:
 
 `;
 async function generateWithImage(prompt, sourceImage) {
@@ -3045,9 +3205,9 @@ async function generateWithImage(prompt, sourceImage) {
   return geminiSemaphore.run(
     () => callWithRetry(async () => {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: [{ role: "user", parts: [{ inlineData: { mimeType, data } }, { text: enhancedPrompt }] }],
-        config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
+        model: "gemini-3-pro-image-preview",
+        contents: [{ role: "user", parts: [{ text: enhancedPrompt }, { inlineData: { mimeType, data } }] }],
+        config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE], imageConfig: { imageSize: "2K" } }
       });
       return extractImageFromResponse(response);
     }, "generateWithImage")
@@ -3058,7 +3218,7 @@ async function generateTextOnly(prompt) {
     const result = await geminiSemaphore.run(
       () => callWithRetry(async () => {
         const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash-image",
+          model: "gemini-3-pro-image-preview",
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: { responseModalities: [import_genai.Modality.TEXT, import_genai.Modality.IMAGE] }
         });
@@ -3074,7 +3234,7 @@ async function editImage(currentImage, editPrompt) {
   return geminiSemaphore.run(
     () => callWithRetry(async () => {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
+        model: "gemini-3-pro-image-preview",
         contents: [{
           role: "user",
           parts: [
@@ -3307,7 +3467,7 @@ setInterval(() => {
 function registerWorker(fn) {
   workerFn = fn;
 }
-function enqueue(type, payload, total = 1) {
+function enqueue(type, payload, total = 1, userId) {
   const id = (0, import_crypto.randomUUID)();
   const job = {
     id,
@@ -3315,6 +3475,7 @@ function enqueue(type, payload, total = 1) {
     status: "queued",
     progress: { current: 0, total },
     payload,
+    userId,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -3536,8 +3697,18 @@ function registerPortraitRoutes(app2) {
       if (dogName && (typeof dogName !== "string" || dogName.length > 100)) {
         return res.status(400).json({ error: "Invalid dog name." });
       }
-      if (originalImage && typeof originalImage === "string" && !originalImage.startsWith("data:image/")) {
+      if (originalImage && typeof originalImage === "string" && !originalImage.startsWith("data:image/") && !originalImage.startsWith("https://")) {
         return res.status(400).json({ error: "Invalid image format." });
+      }
+      let resolvedImage = originalImage || null;
+      if (resolvedImage && !isDataUri(resolvedImage)) {
+        try {
+          const buf = await fetchImageAsBuffer(resolvedImage);
+          resolvedImage = `data:image/png;base64,${buf.toString("base64")}`;
+        } catch (err) {
+          console.error("[generate-portrait] Failed to fetch source image:", err);
+          return res.status(400).json({ error: "Could not load the source image. Please re-upload the photo." });
+        }
       }
       const sanitizedPrompt = sanitizeForPrompt(prompt);
       if (!sanitizedPrompt) return res.status(400).json({ error: "Prompt contains invalid characters." });
@@ -3611,7 +3782,7 @@ function registerPortraitRoutes(app2) {
       }
       const jobId = enqueue("generate", {
         prompt: sanitizedPrompt,
-        originalImage: originalImage || null,
+        originalImage: resolvedImage,
         dogName: dogName ? sanitizeForPrompt(dogName) : dogName,
         dogId: dogId ? parseInt(dogId) : null,
         styleId: styleId ? parseInt(styleId) : null,
@@ -3622,7 +3793,7 @@ function registerPortraitRoutes(app2) {
           generatedImageUrl: existingPortrait.generatedImageUrl
         } : null,
         isNewPortrait
-      });
+      }, 1, userId);
       res.status(202).json({ jobId });
     } catch (error) {
       console.error("[generate-portrait]", error);
@@ -3671,7 +3842,7 @@ function registerPortraitRoutes(app2) {
         imageForEdit,
         editPrompt: sanitizedEditPrompt,
         portraitId: portraitId ? parseInt(portraitId) : null
-      });
+      }, 1, userId);
       res.status(202).json({ jobId });
     } catch (error) {
       console.error("[edit-portrait]", error);
@@ -3952,7 +4123,7 @@ function registerPlansBillingRoutes(app2) {
       res.json({ url: session.url });
     } catch (error) {
       console.error("Error creating checkout session:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to create checkout session" });
+      res.status(500).json({ error: "Failed to create checkout session" });
     }
   });
   app2.post("/api/stripe/confirm-checkout", isAuthenticated, async (req, res) => {
@@ -4171,7 +4342,7 @@ function registerPlansBillingRoutes(app2) {
       });
     } catch (error) {
       console.error("Error changing plan:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to change plan" });
+      res.status(500).json({ error: "Failed to change plan" });
     }
   });
   app2.post("/api/stripe/cancel-plan-change", isAuthenticated, async (req, res) => {
@@ -4205,7 +4376,7 @@ function registerPlansBillingRoutes(app2) {
       res.json({ success: true });
     } catch (error) {
       console.error("Error canceling plan change:", error?.message || error);
-      res.status(500).json({ error: error?.message || "Failed to cancel plan change" });
+      res.status(500).json({ error: "Failed to cancel plan change" });
     }
   });
   app2.get("/api/addon-slots", isAuthenticated, async (req, res) => {
@@ -4454,7 +4625,7 @@ function registerAdminRoutes(app2) {
       }
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("Error creating pet for org:", errMsg, error);
-      res.status(500).json({ error: `Failed to save pet: ${errMsg}` });
+      res.status(500).json({ error: "Failed to save pet" });
     }
   });
   app2.get("/api/admin/organizations/:id", isAuthenticated, isAdmin, async (req, res) => {
@@ -4728,6 +4899,7 @@ function registerAdminRoutes(app2) {
 }
 
 // server/routes/sms.ts
+var import_sharp2 = __toESM(require("sharp"), 1);
 function formatPhoneNumber(raw) {
   const cleaned = raw.replace(/[\s\-().]/g, "");
   return cleaned.startsWith("+") ? cleaned : cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
@@ -4745,7 +4917,124 @@ function isTelnyxConfigured() {
 function isSmsConfigured() {
   return isTwilioConfigured() || isTelnyxConfigured();
 }
-async function sendViaTwilio(phone, body) {
+var recentSends = /* @__PURE__ */ new Map();
+var RATE_WINDOW_MS = 60 * 60 * 1e3;
+var MAX_SENDS_BEFORE_DELAY = 3;
+var DELAY_MS = 10 * 60 * 1e3;
+function recordSend(phone) {
+  const now = Date.now();
+  const timestamps = recentSends.get(phone) || [];
+  timestamps.push(now);
+  recentSends.set(phone, timestamps.filter((t) => now - t < RATE_WINDOW_MS));
+}
+function getRecentSendCount(phone) {
+  const now = Date.now();
+  const timestamps = recentSends.get(phone) || [];
+  const recent = timestamps.filter((t) => now - t < RATE_WINDOW_MS);
+  recentSends.set(phone, recent);
+  return recent.length;
+}
+var retryQueue = /* @__PURE__ */ new Map();
+var MAX_RETRY_ATTEMPTS = 3;
+var RETRY_DELAY_MS = 15 * 60 * 1e3;
+function getRetryStatus(messageId) {
+  return retryQueue.get(messageId);
+}
+function scheduleRetry(messageId, entry) {
+  console.log(`[sms] Carrier rejected ${messageId} to ${entry.phone}, queuing retry ${entry.attempts + 1}/${MAX_RETRY_ATTEMPTS} in 15min`);
+  entry.attempts++;
+  retryQueue.set(messageId, entry);
+  setTimeout(async () => {
+    try {
+      console.log(`[sms] Retrying ${messageId} to ${entry.phone} (attempt ${entry.attempts})`);
+      const result = await sendViaTelnyx(entry.phone, entry.body, entry.mediaUrl);
+      if (!result.success || !result.messageId) {
+        console.warn(`[sms] Retry send failed for ${messageId}: ${result.error}`);
+        if (entry.attempts < MAX_RETRY_ATTEMPTS) {
+          scheduleRetry(messageId, entry);
+        } else {
+          entry.status = "failed";
+          entry.lastError = result.error || "All retries exhausted";
+          retryQueue.set(messageId, entry);
+          console.error(`[sms] All retries exhausted for ${messageId} to ${entry.phone}`);
+        }
+        return;
+      }
+      const deliveryStatus = await pollDeliveryStatus(result.messageId);
+      if (deliveryStatus === "delivered") {
+        entry.status = "delivered";
+        retryQueue.set(messageId, entry);
+        console.log(`[sms] Retry delivered! ${messageId} to ${entry.phone}`);
+      } else if (deliveryStatus === "failed" && entry.attempts < MAX_RETRY_ATTEMPTS) {
+        scheduleRetry(messageId, entry);
+      } else {
+        entry.status = "failed";
+        entry.lastError = "Carrier rejected after retry";
+        retryQueue.set(messageId, entry);
+      }
+    } catch (err) {
+      console.error(`[sms] Retry error for ${messageId}: ${err.message}`);
+      if (entry.attempts < MAX_RETRY_ATTEMPTS) {
+        scheduleRetry(messageId, entry);
+      } else {
+        entry.status = "failed";
+        entry.lastError = err.message;
+        retryQueue.set(messageId, entry);
+      }
+    }
+  }, RETRY_DELAY_MS);
+}
+setInterval(() => {
+  const retryIds = Array.from(retryQueue.keys());
+  for (const id of retryIds) {
+    const entry = retryQueue.get(id);
+    if (entry.status !== "pending") {
+      retryQueue.delete(id);
+    }
+  }
+  const now = Date.now();
+  const phones = Array.from(recentSends.keys());
+  for (const phone of phones) {
+    const timestamps = recentSends.get(phone);
+    const recent = timestamps.filter((t) => now - t < RATE_WINDOW_MS);
+    if (recent.length === 0) recentSends.delete(phone);
+    else recentSends.set(phone, recent);
+  }
+}, 30 * 60 * 1e3);
+async function pollDeliveryStatus(messageId) {
+  const apiKey = process.env.TELNYX_API_KEY;
+  const MAX_POLLS = 6;
+  const POLL_INTERVAL_MS = 3e3;
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    try {
+      const res = await fetch(`https://api.telnyx.com/v2/messages/${messageId}`, {
+        headers: { "Authorization": `Bearer ${apiKey}` }
+      });
+      if (!res.ok) {
+        console.warn(`[sms] Poll ${i + 1}/${MAX_POLLS} failed: HTTP ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const status = data.data?.to?.[0]?.status;
+      if (status === "delivered") {
+        console.log(`[sms] Delivery confirmed for ${messageId} (poll ${i + 1})`);
+        return "delivered";
+      }
+      if (status === "delivery_failed" || status === "sending_failed") {
+        const errors = data.data?.errors || [];
+        console.warn(`[sms] Delivery failed for ${messageId}: status=${status}, errors=${JSON.stringify(errors)}`);
+        return "failed";
+      }
+      console.log(`[sms] Poll ${i + 1}/${MAX_POLLS} for ${messageId}: status=${status}`);
+    } catch (err) {
+      console.warn(`[sms] Poll error for ${messageId}: ${err.message}`);
+    }
+  }
+  console.warn(`[sms] Polling timed out for ${messageId} after ${MAX_POLLS} attempts`);
+  return "unknown";
+}
+async function sendViaTwilio(phone, body, mediaUrl) {
   const twilioSid = process.env.TWILIO_ACCOUNT_SID;
   const twilioMsgSvc = process.env.TWILIO_MESSAGING_SERVICE_SID;
   let authHeader;
@@ -4754,13 +5043,15 @@ async function sendViaTwilio(phone, body) {
   } else {
     authHeader = `Basic ${Buffer.from(`${process.env.TWILIO_API_KEY_SID}:${process.env.TWILIO_API_KEY_SECRET}`).toString("base64")}`;
   }
+  const params = { To: phone, MessagingServiceSid: twilioMsgSvc, Body: body };
+  if (mediaUrl) params.MediaUrl = mediaUrl;
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       "Authorization": authHeader
     },
-    body: new URLSearchParams({ To: phone, MessagingServiceSid: twilioMsgSvc, Body: body }).toString()
+    body: new URLSearchParams(params).toString()
   });
   if (!res.ok) {
     const err = await res.json();
@@ -4768,16 +5059,21 @@ async function sendViaTwilio(phone, body) {
   }
   return { success: true, provider: "twilio" };
 }
-async function sendViaTelnyx(phone, body) {
+async function sendViaTelnyx(phone, body, mediaUrl) {
   const apiKey = process.env.TELNYX_API_KEY;
   const from = process.env.TELNYX_PHONE_NUMBER;
+  const payload = { from, to: phone, text: body };
+  if (mediaUrl) {
+    payload.media_urls = [mediaUrl];
+    payload.type = "MMS";
+  }
   const res = await fetch("https://api.telnyx.com/v2/messages", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ from, to: phone, text: body })
+    body: JSON.stringify(payload)
   });
   if (!res.ok) {
     const err = await res.json();
@@ -4785,21 +5081,91 @@ async function sendViaTelnyx(phone, body) {
     return { success: false, error: `Telnyx: ${detail}`, provider: "telnyx" };
   }
   const data = await res.json();
+  const messageId = data.data?.id;
   const status = data.data?.to?.[0]?.status;
   if (status === "delivery_failed") {
     const errDetail = data.data?.errors?.[0]?.detail || "Delivery failed";
-    return { success: false, error: `Telnyx: ${errDetail}`, provider: "telnyx" };
+    return { success: false, error: `Telnyx: ${errDetail}`, provider: "telnyx", messageId };
   }
-  return { success: true, provider: "telnyx" };
+  return { success: true, provider: "telnyx", messageId };
 }
-async function sendSms(to, body) {
+async function sendSms(to, body, mediaUrl) {
   const phone = formatPhoneNumber(to);
   const errors = [];
+  if (mediaUrl) {
+    try {
+      const imgBuffer = await fetchImageAsBuffer(mediaUrl);
+      const compressed = await (0, import_sharp2.default)(imgBuffer).jpeg({ quality: 75 }).toBuffer();
+      const fname = `mms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const dataUri = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+      mediaUrl = await uploadToStorage(dataUri, "portraits", fname);
+      console.log(`[sms] Compressed ${imgBuffer.length}B -> ${compressed.length}B, uploaded: ${mediaUrl}`);
+    } catch (err) {
+      console.error(`[sms] Failed to prepare MMS image: ${err.message}`);
+      return { success: false, error: `Failed to process portrait image: ${err.message}` };
+    }
+  }
+  const recentCount = getRecentSendCount(phone);
+  if (recentCount >= MAX_SENDS_BEFORE_DELAY) {
+    console.log(`[sms] ${recentCount} recent sends to ${phone}, queueing with ${DELAY_MS / 6e4}min delay`);
+    const queueId = `queued-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entry = { phone, body, mediaUrl, attempts: 0, status: "pending" };
+    retryQueue.set(queueId, entry);
+    setTimeout(async () => {
+      try {
+        console.log(`[sms] Sending delayed message ${queueId} to ${phone}`);
+        recordSend(phone);
+        const result = await sendViaTelnyx(phone, body, mediaUrl);
+        if (result.success && result.messageId) {
+          const deliveryStatus = await pollDeliveryStatus(result.messageId);
+          entry.status = deliveryStatus === "failed" ? "failed" : "delivered";
+          if (deliveryStatus === "failed" && entry.attempts < MAX_RETRY_ATTEMPTS) {
+            scheduleRetry(queueId, entry);
+          }
+        } else {
+          entry.status = "failed";
+          entry.lastError = result.error;
+        }
+        retryQueue.set(queueId, entry);
+      } catch (err) {
+        entry.status = "failed";
+        entry.lastError = err.message;
+        retryQueue.set(queueId, entry);
+      }
+    }, DELAY_MS);
+    return { success: true, queued: true, messageId: queueId };
+  }
+  recordSend(phone);
+  if (isTelnyxConfigured()) {
+    try {
+      const result = await sendViaTelnyx(phone, body, mediaUrl);
+      if (result.success && result.messageId) {
+        console.log(`[sms] Accepted by Telnyx: ${result.messageId} to ${phone}${mediaUrl ? " (MMS)" : ""}`);
+        const deliveryStatus = await pollDeliveryStatus(result.messageId);
+        if (deliveryStatus === "delivered") {
+          return { success: true, delivered: true, provider: "telnyx", messageId: result.messageId };
+        }
+        if (deliveryStatus === "failed") {
+          const entry = { phone, body, mediaUrl, attempts: 0, status: "pending" };
+          scheduleRetry(result.messageId, entry);
+          return { success: false, error: "Carrier rejected the message", retrying: true, messageId: result.messageId, provider: "telnyx" };
+        }
+        return { success: true, delivered: false, provider: "telnyx", messageId: result.messageId };
+      }
+      if (result.error) {
+        console.warn(`[sms] Telnyx failed: ${result.error}`);
+        errors.push(result.error);
+      }
+    } catch (err) {
+      console.warn(`[sms] Telnyx error: ${err.message}`);
+      errors.push(`Telnyx: ${err.message}`);
+    }
+  }
   if (isTwilioConfigured()) {
     try {
-      const result = await sendViaTwilio(phone, body);
+      const result = await sendViaTwilio(phone, body, mediaUrl);
       if (result.success) {
-        console.log(`[sms] Sent via Twilio to ${phone}`);
+        console.log(`[sms] Sent via Twilio to ${phone}${mediaUrl ? " (MMS)" : ""}`);
         return result;
       }
       console.warn(`[sms] Twilio failed: ${result.error}`);
@@ -4807,20 +5173,6 @@ async function sendSms(to, body) {
     } catch (err) {
       console.warn(`[sms] Twilio error: ${err.message}`);
       errors.push(`Twilio: ${err.message}`);
-    }
-  }
-  if (isTelnyxConfigured()) {
-    try {
-      const result = await sendViaTelnyx(phone, body);
-      if (result.success) {
-        console.log(`[sms] Sent via Telnyx to ${phone}`);
-        return result;
-      }
-      console.warn(`[sms] Telnyx failed: ${result.error}`);
-      errors.push(result.error || "Telnyx failed");
-    } catch (err) {
-      console.warn(`[sms] Telnyx error: ${err.message}`);
-      errors.push(`Telnyx: ${err.message}`);
     }
   }
   if (errors.length === 0) {
@@ -4831,7 +5183,7 @@ async function sendSms(to, body) {
 function registerSmsRoutes(app2) {
   app2.post("/api/send-sms", isAuthenticated, smsRateLimiter, async (req, res) => {
     try {
-      const { to, message } = req.body;
+      const { to, message, mediaUrl } = req.body;
       if (!to || !message) {
         return res.status(400).json({ error: "Phone number and message are required" });
       }
@@ -4842,16 +5194,33 @@ function registerSmsRoutes(app2) {
       if (!isSmsConfigured()) {
         return res.status(503).json({ error: "SMS service is not configured" });
       }
-      const result = await sendSms(cleaned, message);
-      if (!result.success) {
-        throw new Error(result.error || "Failed to send text message");
+      const phone = formatPhoneNumber(cleaned);
+      const result = await sendSms(phone, message, mediaUrl || void 0);
+      if (result.queued) {
+        return res.json({ success: true, queued: true, messageId: result.messageId });
       }
-      res.json({ success: true, provider: result.provider });
+      if (result.retrying) {
+        return res.json({ success: false, retrying: true, messageId: result.messageId, error: result.error });
+      }
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Failed to send text message" });
+      }
+      res.json({ success: true, delivered: result.delivered, messageId: result.messageId });
     } catch (error) {
       console.error("SMS send error:", error);
-      const errMsg = error?.message || "Failed to send text message";
-      res.status(500).json({ error: errMsg });
+      res.status(500).json({ error: "Failed to send text message" });
     }
+  });
+  app2.get("/api/sms-status/:messageId", isAuthenticated, (req, res) => {
+    const { messageId } = req.params;
+    const entry = getRetryStatus(messageId);
+    if (!entry) {
+      return res.json({ status: "unknown" });
+    }
+    res.json({
+      status: entry.status,
+      error: entry.lastError
+    });
   });
 }
 
@@ -4990,7 +5359,7 @@ function registerInstagramRoutes(app2) {
       }
     } catch (error) {
       console.error("[instagram] Connect error:", error);
-      res.redirect("/settings?instagram=error&detail=" + encodeURIComponent(error.message || "unknown"));
+      res.redirect("/settings?instagram=error&detail=connect_failed");
     }
   });
   app2.post("/api/instagram/post", isAuthenticated, async (req, res) => {
@@ -5085,7 +5454,7 @@ function registerInstagramRoutes(app2) {
       });
     } catch (error) {
       console.error("[instagram] Post error:", error);
-      res.status(500).json({ error: error.message || "Failed to post to Instagram" });
+      res.status(500).json({ error: "Failed to post to Instagram" });
     }
   });
   app2.delete("/api/instagram/disconnect", isAuthenticated, async (req, res) => {
@@ -5125,9 +5494,7 @@ function registerInstagramRoutes(app2) {
       res.status(500).json({ error: "Failed to disconnect Instagram" });
     }
   });
-  app2.get("/api/admin/instagram-debug", isAuthenticated, async (req, res) => {
-    const email = getUserEmail(req);
-    if (email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+  app2.get("/api/admin/instagram-debug", isAuthenticated, isAdmin, async (req, res) => {
     const apiKey = process.env.AYRSHARE_API_KEY;
     if (!apiKey) return res.json({ error: "AYRSHARE_API_KEY not set" });
     try {
@@ -5149,7 +5516,7 @@ function registerInstagramRoutes(app2) {
         }
       });
     } catch (e) {
-      res.json({ error: e.message });
+      res.json({ error: "Failed to fetch debug info" });
     }
   });
 }
@@ -5294,7 +5661,7 @@ function registerInstagramNativeRoutes(app2) {
       res.redirect(authUrl);
     } catch (error) {
       console.error("[instagram-native] Connect error:", error);
-      res.redirect("/settings?instagram=error&detail=" + encodeURIComponent(error.message || "unknown"));
+      res.redirect("/settings?instagram=error&detail=connect_failed");
     }
   });
   app2.get("/api/instagram-native/callback", async (req, res) => {
@@ -5367,7 +5734,7 @@ function registerInstagramNativeRoutes(app2) {
       res.redirect("/settings?instagram=connected");
     } catch (error) {
       console.error("[instagram-native] Callback error:", error);
-      res.redirect("/settings?instagram=error&detail=" + encodeURIComponent(error.message || "callback_failed"));
+      res.redirect("/settings?instagram=error&detail=callback_failed");
     }
   });
   app2.post("/api/instagram-native/post", isAuthenticated, async (req, res) => {
@@ -5488,7 +5855,7 @@ function registerInstagramNativeRoutes(app2) {
       });
     } catch (error) {
       console.error("[instagram-native] Post error:", error);
-      res.status(500).json({ error: error.message || "Failed to post to Instagram" });
+      res.status(500).json({ error: "Failed to post to Instagram" });
     }
   });
   app2.delete("/api/instagram-native/disconnect", isAuthenticated, async (req, res) => {
@@ -5606,13 +5973,30 @@ async function registerImportRoutes(app2) {
       const name = req.query.name;
       const location = req.query.location;
       if (!providerName) return res.status(400).json({ error: "provider is required" });
-      if (!name) return res.status(400).json({ error: "name is required" });
+      if (!name && !location) return res.status(400).json({ error: "name or location is required" });
       const provider = getProvider2(providerName);
-      const orgs = await provider.searchOrganizations(name, location);
+      const orgs = await provider.searchOrganizations(name || "", location);
       res.json(orgs);
     } catch (error) {
       console.error("[import] Search error:", error);
-      res.status(500).json({ error: error.message || "Failed to search organizations" });
+      res.status(500).json({ error: "Failed to search organizations" });
+    }
+  });
+  app2.get("/api/import/org-info", isAuthenticated, async (req, res) => {
+    try {
+      const providerName = req.query.provider;
+      const orgId = req.query.orgId;
+      if (!providerName) return res.status(400).json({ error: "provider is required" });
+      if (!orgId) return res.status(400).json({ error: "orgId is required" });
+      const provider = getProvider2(providerName);
+      if (!provider.getOrganization) {
+        return res.status(400).json({ error: "Provider does not support org lookup" });
+      }
+      const org = await provider.getOrganization(orgId);
+      res.json(org);
+    } catch (error) {
+      console.error("[import] Org lookup error:", error);
+      res.status(500).json({ error: "Failed to look up organization" });
     }
   });
   app2.get("/api/import/animals", isAuthenticated, async (req, res) => {
@@ -5647,7 +6031,7 @@ async function registerImportRoutes(app2) {
       res.json(animals.map((a) => ({ ...a, alreadyImported: false })));
     } catch (error) {
       console.error("[import] Fetch animals error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch animals" });
+      res.status(500).json({ error: "Failed to fetch animals" });
     }
   });
   app2.post("/api/import/pets", isAuthenticated, async (req, res) => {
@@ -5727,7 +6111,7 @@ async function registerImportRoutes(app2) {
       res.json({ imported, skipped });
     } catch (error) {
       console.error("[import] Import error:", error);
-      res.status(500).json({ error: error.message || "Failed to import pets" });
+      res.status(500).json({ error: "Failed to import pets" });
     }
   });
 }
@@ -5834,14 +6218,58 @@ function registerJobRoutes(app2) {
   app2.get("/api/jobs/:jobId", isAuthenticated, (req, res) => {
     const job = getJob(req.params.jobId);
     if (!job) return res.status(404).json({ error: "Job not found" });
+    const userId = getUserId(req);
+    if (job.userId && job.userId !== userId) {
+      return res.status(404).json({ error: "Job not found" });
+    }
     res.json(job);
   });
   app2.get("/api/jobs", isAuthenticated, (req, res) => {
     const ids = (req.query.ids || "").split(",").filter(Boolean);
     if (ids.length === 0) return res.status(400).json({ error: "Provide ?ids=id1,id2,..." });
     if (ids.length > 50) return res.status(400).json({ error: "Max 50 job IDs per request" });
-    const results = getJobs(ids).map((j, i) => j || { id: ids[i], status: "not_found" });
+    const userId = getUserId(req);
+    const results = getJobs(ids).map((j, i) => {
+      if (!j) return { id: ids[i], status: "not_found" };
+      if (j.userId && j.userId !== userId) return { id: ids[i], status: "not_found" };
+      return j;
+    });
     res.json(results);
+  });
+}
+
+// server/routes/upload.ts
+var import_multer = __toESM(require("multer"), 1);
+var import_sharp3 = __toESM(require("sharp"), 1);
+var import_express_rate_limit3 = __toESM(require("express-rate-limit"), 1);
+var upload = (0, import_multer.default)({
+  storage: import_multer.default.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  }
+});
+var uploadLimiter = (0, import_express_rate_limit3.default)({
+  windowMs: 60 * 60 * 1e3,
+  max: 20,
+  message: "Too many uploads, please try again later"
+});
+function registerUploadRoutes(app2) {
+  app2.post("/api/upload-temp", uploadLimiter, upload.single("photo"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).send("No file uploaded");
+      }
+      const resized = await (0, import_sharp3.default)(req.file.buffer).resize(1500, 1500, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      const base64 = `data:image/jpeg;base64,${resized.toString("base64")}`;
+      const filename = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const url = await uploadToStorage(base64, "originals", filename);
+      res.redirect(302, `/create?pending_image=${encodeURIComponent(url)}`);
+    } catch (err) {
+      console.error("[upload-temp] Error:", err);
+      res.status(500).send("Upload failed. Please try again.");
+    }
   });
 }
 
@@ -5864,6 +6292,7 @@ async function registerRoutes(httpServer2, app2) {
   await registerImportRoutes(app2);
   registerGdprRoutes(app2);
   registerJobRoutes(app2);
+  registerUploadRoutes(app2);
   return httpServer2;
 }
 
@@ -6542,11 +6971,6 @@ function isCrawler(userAgent) {
 function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function getBaseUrl2(req) {
-  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers["host"] || "pawtraitpals.com";
-  return `${proto}://${host}`;
-}
 function buildOgHtml(template, meta) {
   const ogTags = [
     `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
@@ -6590,7 +7014,7 @@ function setupOgMetaRoutes(app2) {
       if (!org || !org.isActive) return next();
       const orgDogs = await storage.getDogsByOrganization(org.id);
       const availableDogs = orgDogs.filter((d) => d.isAvailable);
-      const baseUrl = getBaseUrl2(req);
+      const baseUrl = getBaseUrl(req);
       const ogImageUrl = `${baseUrl}/api/rescue/${slug}/og-image`;
       const petCount = availableDogs.length;
       const speciesSet = new Set(availableDogs.map((d) => d.species));
@@ -6618,7 +7042,7 @@ function setupOgMetaRoutes(app2) {
       const dog = await storage.getDog(id);
       if (!dog) return next();
       const org = dog.organizationId ? await storage.getOrganization(dog.organizationId) : null;
-      const baseUrl = getBaseUrl2(req);
+      const baseUrl = getBaseUrl(req);
       const ogImageUrl = `${baseUrl}/api/pawfile/${id}/og-image`;
       const breedStr = dog.breed ? `${dog.breed} ` : "";
       const ageStr = dog.age ? `, ${dog.age}` : "";
@@ -6644,7 +7068,17 @@ function setupOgMetaRoutes(app2) {
 // server/index.ts
 var app = (0, import_express2.default)();
 app.use((0, import_helmet.default)({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://js.stripe.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.supabase.co", "https://api.qrserver.com"],
+      connectSrc: ["'self'", "https://*.supabase.co", "https://api.stripe.com"],
+      frameSrc: ["https://js.stripe.com"]
+    }
+  },
   crossOriginEmbedderPolicy: false
 }));
 app.disable("x-powered-by");
@@ -6747,10 +7181,9 @@ httpServer.listen({ port, host: "0.0.0.0" }, () => {
     }
     app.use((err, _req, res, next) => {
       const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
       console.error("Internal Server Error:", err);
       if (res.headersSent) return next(err);
-      return res.status(status).json({ message });
+      return res.status(status).json({ message: "Internal Server Error" });
     });
     if (process.env.NODE_ENV === "production") {
       serveStatic(app);

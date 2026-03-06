@@ -256,20 +256,24 @@ export default function DogProfile() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 mt-2 print:hidden">
-            <Button variant="outline" onClick={handleSavePawfile} disabled={saving} className="gap-2" data-testid="button-save-pawfile">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              Save Pawfile
-            </Button>
-            <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
-              <Printer className="h-4 w-4" />
-              Print
-            </Button>
-          </div>
-          <div className="mt-3 print:hidden">
-            <p className="text-sm text-muted-foreground mb-2">Share {dog.name}'s pawfile:</p>
-            <ShareButtons title={shareTitle} text={shareText} dogId={dog.id} dogName={dog.name} dogBreed={dog.breed || undefined} orgId={dog.organizationId} portraitImageUrl={imageUrl || undefined} adoptionUrl={dog.adoptionUrl || undefined} orgWebsiteUrl={dog.organizationWebsiteUrl || undefined} captureRef={cardRef} />
-          </div>
+          {canEdit && (
+            <>
+              <div className="flex flex-wrap gap-2 mt-2 print:hidden">
+                <Button variant="outline" onClick={handleSavePawfile} disabled={saving} className="gap-2" data-testid="button-save-pawfile">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  Save Pawfile
+                </Button>
+                <Button variant="outline" onClick={handlePrint} className="gap-2" data-testid="button-print">
+                  <Printer className="h-4 w-4" />
+                  Print
+                </Button>
+              </div>
+              <div className="mt-3 print:hidden">
+                <p className="text-sm text-muted-foreground mb-2">Share {dog.name}'s pawfile:</p>
+                <ShareButtons title={shareTitle} text={shareText} dogId={dog.id} dogName={dog.name} dogBreed={dog.breed || undefined} orgId={dog.organizationId} portraitImageUrl={imageUrl || undefined} adoptionUrl={dog.adoptionUrl || undefined} orgWebsiteUrl={dog.organizationWebsiteUrl || undefined} captureRef={cardRef} />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
