@@ -7,7 +7,7 @@ import { getStripeClient, STRIPE_PLAN_PRICE_MAP, mapStripeStatusToInternal } fro
 import { containsInappropriateLanguage } from "@shared/content-filter";
 import { isValidBreed } from "../breeds";
 import { canStartFreeTrial, markFreeTrialUsed } from "../subscription";
-import { isAdmin, generateUniqueSlug, computePetLimitInfo, checkDogLimit, createDogWithPortrait } from "./helpers";
+import { isAdmin, generateUniqueSlug, computePetLimitInfo, checkDogLimit, createDogWithPortrait, ORG_ALLOWED_FIELDS } from "./helpers";
 
 export function registerAdminRoutes(app: Express): void {
   app.post("/api/admin/organizations", isAuthenticated, isAdmin, async (req: any, res: Response) => {
@@ -284,16 +284,7 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(404).json({ error: "Organization not found" });
       }
 
-      const allowedFields = [
-        "name", "description", "websiteUrl", "logoUrl",
-        "contactName", "contactEmail", "contactPhone",
-        "socialFacebook", "socialInstagram", "socialTwitter", "socialNextdoor",
-        "locationStreet", "locationCity", "locationState", "locationZip", "locationCountry",
-        "billingStreet", "billingCity", "billingState", "billingZip", "billingCountry",
-        "notes", "isActive", "planId", "speciesHandled", "onboardingCompleted",
-        "industryType", "captureMode", "deliveryMode", "notificationMode",
-        "subscriptionStatus", "stripeCustomerId", "stripeSubscriptionId", "stripeTestMode", "billingCycleStart"
-      ];
+      const allowedFields = ORG_ALLOWED_FIELDS;
       const updates: Record<string, any> = {};
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {

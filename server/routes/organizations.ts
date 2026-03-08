@@ -3,7 +3,7 @@ import type { InsertOrganization } from "@shared/schema";
 import { storage } from "../storage";
 import { isAuthenticated } from "../auth";
 import { canStartFreeTrial, markFreeTrialUsed } from "../subscription";
-import { getUserId, generateUniqueSlug, computePetLimitInfo } from "./helpers";
+import { getUserId, generateUniqueSlug, computePetLimitInfo, ORG_ALLOWED_FIELDS } from "./helpers";
 
 export function registerOrganizationRoutes(app: Express): void {
   app.get("/api/my-organization", isAuthenticated, async (req: any, res: Response) => {
@@ -76,14 +76,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return res.status(404).json({ error: "No organization found" });
       }
 
-      const allowedFields = [
-        "name", "description", "websiteUrl", "logoUrl",
-        "contactName", "contactEmail", "contactPhone",
-        "socialFacebook", "socialInstagram", "socialTwitter", "socialNextdoor",
-        "billingStreet", "billingCity", "billingState", "billingZip", "billingCountry",
-        "locationStreet", "locationCity", "locationState", "locationZip", "locationCountry",
-        "speciesHandled", "onboardingCompleted"
-      ];
+      const allowedFields = ORG_ALLOWED_FIELDS;
       const updates: Record<string, any> = {};
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
