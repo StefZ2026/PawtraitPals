@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { isAuthenticated } from "../auth";
 import { containsInappropriateLanguage } from "@shared/content-filter";
 import { isValidBreed } from "../breeds";
-import { getUserId, getUserEmail, ADMIN_EMAIL, checkDogLimit, createDogWithPortrait, DOG_ALLOWED_FIELDS } from "./helpers";
+import { getUserId, getUserEmail, checkDogLimit, createDogWithPortrait, DOG_ALLOWED_FIELDS, resolveOrg } from "./helpers";
 
 export function registerDogRoutes(app: Express): void {
   // Public gallery (all dogs)
@@ -58,9 +58,11 @@ export function registerDogRoutes(app: Express): void {
   app.get("/api/my-dogs", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = getUserId(req);
-      const org = await storage.getOrganizationByOwner(userId);
+      const userEmail = getUserEmail(req);
+      const { org, error, status } = await resolveOrg(userId, userEmail);
       if (!org) {
-        return res.json([]);
+        if (status === 404) return res.json([]);
+        return res.status(status || 400).json({ error });
       }
 
       const orgDogs = await storage.getDogsByOrganization(org.id);
@@ -124,23 +126,12 @@ export function registerDogRoutes(app: Express): void {
     try {
       const userId = getUserId(req);
       const userEmail = getUserEmail(req);
-      const userIsAdmin = userEmail === ADMIN_EMAIL;
 
-      let orgId: number;
-      let org;
-      if (userIsAdmin && req.body.organizationId) {
-        orgId = req.body.organizationId;
-        org = await storage.getOrganization(orgId);
-        if (!org) {
-          return res.status(400).json({ error: "Organization not found" });
-        }
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-        if (!org) {
-          return res.status(400).json({ error: "You need to create an organization first" });
-        }
-        orgId = org.id;
+      const { org, error, status } = await resolveOrg(userId, userEmail, { orgId: req.body.organizationId });
+      if (!org) {
+        return res.status(status || 400).json({ error });
       }
+      const orgId = org.id;
 
       if (!org.planId || org.subscriptionStatus === "inactive") {
         return res.status(403).json({ error: "Please select a plan before adding pets" });
@@ -190,18 +181,15 @@ export function registerDogRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const userId = getUserId(req);
       const userEmail = getUserEmail(req);
-      const userIsAdmin = userEmail === ADMIN_EMAIL;
 
       const dog = await storage.getDog(id);
       if (!dog) {
         return res.status(404).json({ error: "Pet not found" });
       }
 
-      if (!userIsAdmin) {
-        const org = await storage.getOrganizationByOwner(userId);
-        if (!org || dog.organizationId !== org.id) {
-          return res.status(403).json({ error: "Not authorized to edit this dog" });
-        }
+      const { org, error, status } = await resolveOrg(userId, userEmail, { dogId: id });
+      if (!org) {
+        return res.status(status || 403).json({ error: error || "Not authorized to edit this dog" });
       }
 
       const { selectedPortraitId, ...rawData } = req.body;
@@ -251,18 +239,15 @@ export function registerDogRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const userId = getUserId(req);
       const userEmail = getUserEmail(req);
-      const userIsAdmin = userEmail === ADMIN_EMAIL;
 
       const dog = await storage.getDog(id);
       if (!dog) {
         return res.status(404).json({ error: "Pet not found" });
       }
 
-      if (!userIsAdmin) {
-        const org = await storage.getOrganizationByOwner(userId);
-        if (!org || dog.organizationId !== org.id) {
-          return res.status(403).json({ error: "Not authorized to delete this dog" });
-        }
+      const { org, error, status } = await resolveOrg(userId, userEmail, { dogId: id });
+      if (!org) {
+        return res.status(status || 403).json({ error: error || "Not authorized to delete this dog" });
       }
 
       await storage.deleteDog(id);

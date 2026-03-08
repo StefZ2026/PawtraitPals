@@ -4,7 +4,7 @@ import { isAuthenticated } from "../auth";
 import { generateImage, editImage } from "../gemini";
 import { generateShowcaseMockup, generatePawfileMockup } from "../generate-mockups";
 import { isTrialExpired } from "../subscription";
-import { getUserId, getUserEmail, ADMIN_EMAIL, sanitizeForPrompt, resolveOrgForUser, checkDogLimit, aiRateLimiter, MAX_EDITS_PER_IMAGE } from "./helpers";
+import { getUserId, getUserEmail, sanitizeForPrompt, resolveOrg, checkDogLimit, aiRateLimiter, MAX_EDITS_PER_IMAGE } from "./helpers";
 import { uploadToStorage, isDataUri, fetchImageAsBuffer } from "../supabase-storage";
 import { enqueue, registerWorker, type Job } from "../job-queue";
 
@@ -169,17 +169,9 @@ export function registerPortraitRoutes(app: Express): void {
       if (isNaN(dogId)) return res.status(400).json({ error: "Invalid pet ID" });
       const userId = getUserId(req);
       const userEmail = getUserEmail(req);
-      const userIsAdmin = userEmail === ADMIN_EMAIL;
 
-      const dog = await storage.getDog(dogId);
-      if (!dog) return res.status(404).json({ error: "Pet not found" });
-
-      if (!userIsAdmin) {
-        const userOrg = await storage.getOrganizationByOwner(userId);
-        if (!userOrg || userOrg.id !== dog.organizationId) {
-          return res.status(403).json({ error: "Access denied" });
-        }
-      }
+      const { org, error, status } = await resolveOrg(userId, userEmail, { dogId });
+      if (!org) return res.status(status || 403).json({ error });
 
       const dogPortraits = await storage.getPortraitsByDog(dogId);
       res.json(dogPortraits);
@@ -222,17 +214,11 @@ export function registerPortraitRoutes(app: Express): void {
       const sanitizedPrompt = sanitizeForPrompt(prompt);
       if (!sanitizedPrompt) return res.status(400).json({ error: "Prompt contains invalid characters." });
 
-      let org;
-      const userIsAdmin = userEmail === ADMIN_EMAIL;
-      if (userIsAdmin && organizationId && !dogId) {
-        const targetOrg = await storage.getOrganization(parseInt(organizationId));
-        if (!targetOrg) return res.status(404).json({ error: "Organization not found" });
-        org = targetOrg;
-      } else {
-        const resolved = await resolveOrgForUser(userId, userEmail, dogId ? parseInt(dogId) : undefined);
-        if (resolved.error) return res.status(resolved.status || 400).json({ error: resolved.error });
-        org = resolved.org;
-      }
+      const { org, error: orgError, status: orgStatus } = await resolveOrg(userId, userEmail, {
+        orgId: organizationId,
+        dogId: dogId,
+      });
+      if (!org) return res.status(orgStatus || 400).json({ error: orgError });
 
       if (org.subscriptionStatus === "canceled") {
         return res.status(403).json({ error: "Your subscription has been canceled. Please choose a new plan to generate portraits." });

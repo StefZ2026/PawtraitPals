@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { storage } from "../storage";
 import { pool } from "../db";
 import { isAuthenticated } from "../auth";
-import { getUserId, getUserEmail, ADMIN_EMAIL, getOrgForUser, getBaseUrl } from "./helpers";
+import { getUserId, getUserEmail, resolveOrg } from "./helpers";
 
 const GRAPH_API = 'https://graph.instagram.com';
 const GRAPH_API_V = 'https://graph.instagram.com/v21.0';
@@ -76,8 +76,10 @@ export function registerInstagramNativeRoutes(app: Express): void {
   // Native Instagram: Check connection status
   app.get("/api/instagram-native/status", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
+      const userEmail = getUserEmail(req);
       const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
-      const org = await getOrgForUser(req, orgIdParam);
+      const { org, error, status } = await resolveOrg(userId, userEmail, { orgId: orgIdParam });
       if (!org) return res.json({ connected: false });
 
       const result = await pool.query(
@@ -145,18 +147,12 @@ export function registerInstagramNativeRoutes(app: Express): void {
 
     try {
       const userId = getUserId(req);
-      const email = getUserEmail(req);
-      const userIsAdmin = email === ADMIN_EMAIL;
+      const userEmail = getUserEmail(req);
       const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
 
-      let orgId: number | null = null;
-      if (userIsAdmin && orgIdParam) {
-        orgId = orgIdParam;
-      } else {
-        const org = await storage.getOrganizationByOwner(userId);
-        if (org) orgId = org.id;
-      }
-      if (!orgId) return res.redirect('/settings?instagram=error&detail=no_organization');
+      const { org } = await resolveOrg(userId, userEmail, { orgId: orgIdParam });
+      if (!org) return res.redirect('/settings?instagram=error&detail=no_organization');
+      const orgId = org.id;
 
       // Store orgId in state param for callback, HMAC-signed to prevent tampering
       const statePayload = JSON.stringify({ orgId, ts: Date.now() });
@@ -266,8 +262,7 @@ export function registerInstagramNativeRoutes(app: Express): void {
   app.post("/api/instagram-native/post", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
-      const email = getUserEmail(req);
-      const userIsAdmin = email === ADMIN_EMAIL;
+      const userEmail = getUserEmail(req);
       const { dogId, caption, image, orgId: bodyOrgId } = req.body;
 
       let imageToPost: string;
@@ -275,27 +270,17 @@ export function registerInstagramNativeRoutes(app: Express): void {
       let defaultCaption: string;
 
       if (image && bodyOrgId) {
-        org = await storage.getOrganization(parseInt(bodyOrgId));
-        if (!org) return res.status(404).json({ error: "Organization not found" });
-        if (!userIsAdmin) {
-          const userOrg = await storage.getOrganizationByOwner(userId);
-          if (!userOrg || userOrg.id !== org.id) {
-            return res.status(403).json({ error: "You don't have access to this organization" });
-          }
-        }
+        const resolved = await resolveOrg(userId, userEmail, { orgId: bodyOrgId });
+        if (!resolved.org) return res.status(resolved.status || 404).json({ error: resolved.error || "Organization not found" });
+        org = resolved.org;
         imageToPost = image;
         defaultCaption = caption || `Check out the adorable pets at ${org.name}! #adoptdontshop #rescuepets #pawtraitpals`;
       } else if (dogId) {
+        const resolved = await resolveOrg(userId, userEmail, { dogId });
+        if (!resolved.org) return res.status(resolved.status || 404).json({ error: resolved.error || "Organization not found" });
+        org = resolved.org;
         const dog = await storage.getDog(parseInt(dogId));
         if (!dog) return res.status(404).json({ error: "Dog not found" });
-        org = await storage.getOrganization(dog.organizationId);
-        if (!org) return res.status(404).json({ error: "Organization not found" });
-        if (!userIsAdmin) {
-          const userOrg = await storage.getOrganizationByOwner(userId);
-          if (!userOrg || userOrg.id !== org.id) {
-            return res.status(403).json({ error: "You don't have access to this organization" });
-          }
-        }
         const portrait = await storage.getSelectedPortraitByDog(dog.id);
         if (!portrait || !portrait.generatedImageUrl) {
           return res.status(400).json({ error: "No portrait found for this pet" });
@@ -404,9 +389,11 @@ export function registerInstagramNativeRoutes(app: Express): void {
   // Native Instagram: Disconnect
   app.delete("/api/instagram-native/disconnect", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
+      const userEmail = getUserEmail(req);
       const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
-      const org = await getOrgForUser(req, orgIdParam);
-      if (!org) return res.status(404).json({ error: "Organization not found" });
+      const { org, error, status } = await resolveOrg(userId, userEmail, { orgId: orgIdParam });
+      if (!org) return res.status(status || 404).json({ error: error || "Organization not found" });
 
       await pool.query(
         `UPDATE organizations SET

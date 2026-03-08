@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { isAuthenticated } from "../auth";
 import { stripeService } from "../stripeService";
 import { getStripePublishableKey, getStripeClient, getPriceId } from "../stripeClient";
-import { getUserId, getUserEmail, ADMIN_EMAIL, MAX_ADDITIONAL_SLOTS, validateAndCleanStripeData } from "./helpers";
+import { getUserId, getUserEmail, MAX_ADDITIONAL_SLOTS, validateAndCleanStripeData, resolveOrg } from "./helpers";
 
 export function registerPlansBillingRoutes(app: Express): void {
   app.get("/api/stripe/publishable-key", async (req: Request, res: Response) => {
@@ -32,20 +32,13 @@ export function registerPlansBillingRoutes(app: Express): void {
         return res.status(400).json({ error: "Invalid plan selected" });
       }
 
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
-
       if (!orgId) {
         return res.status(400).json({ error: "Organization ID is required. Please try again from your dashboard." });
       }
 
-      const org = await storage.getOrganization(orgId);
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId });
       if (!org) {
-        return res.status(400).json({ error: "Organization not found" });
-      }
-
-      if (!callerIsAdmin && org.ownerId !== userId) {
-        return res.status(403).json({ error: "You don't have access to this organization" });
+        return res.status(status || 400).json({ error: error || "Organization not found" });
       }
 
       const orgCurrentMode = (org as any).stripeTestMode ?? true;
@@ -116,15 +109,9 @@ export function registerPlansBillingRoutes(app: Express): void {
       if (!targetOrgId) {
         return res.status(400).json({ error: "Organization not found. Could not determine which organization this checkout belongs to." });
       }
-      const org = await storage.getOrganization(targetOrgId);
+      const { org, error: resolveError, status: resolveStatus } = await resolveOrg(userId, getUserEmail(req), { orgId: targetOrgId });
       if (!org) {
-        return res.status(400).json({ error: "Organization not found. Could not determine which organization this checkout belongs to." });
-      }
-
-      const userEmail = getUserEmail(req);
-      const callerIsAdmin = userEmail === ADMIN_EMAIL;
-      if (!callerIsAdmin && org.ownerId !== userId) {
-        return res.status(403).json({ error: "You do not have access to this organization" });
+        return res.status(resolveStatus || 400).json({ error: resolveError || "Organization not found. Could not determine which organization this checkout belongs to." });
       }
 
       const sessionCustomerId = typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id;
@@ -187,27 +174,11 @@ export function registerPlansBillingRoutes(app: Express): void {
   app.post("/api/stripe/portal", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = getUserId(req);
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
       const { orgId: bodyOrgId } = req.body || {};
 
-      let org;
-      if (bodyOrgId) {
-        if (!callerIsAdmin) {
-          const ownerOrg = await storage.getOrganizationByOwner(userId);
-          if (!ownerOrg || ownerOrg.id !== parseInt(bodyOrgId)) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-        }
-        org = await storage.getOrganization(parseInt(bodyOrgId));
-      } else if (callerIsAdmin) {
-        return res.status(400).json({ error: "Admin must specify orgId" });
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
-
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId: bodyOrgId });
       if (!org) {
-        return res.status(400).json({ error: "No billing account found" });
+        return res.status(status || 400).json({ error: error || "No billing account found" });
       }
 
       const stripeState = await validateAndCleanStripeData(org.id);
@@ -234,24 +205,11 @@ export function registerPlansBillingRoutes(app: Express): void {
   app.get("/api/subscription-info", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = getUserId(req);
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
       const reqOrgId = req.query.orgId ? parseInt(req.query.orgId as string) : null;
 
-      let org;
-      if (reqOrgId) {
-        org = await storage.getOrganization(reqOrgId);
-        if (org && !callerIsAdmin && org.ownerId !== userId) {
-          return res.status(403).json({ error: "Access denied" });
-        }
-      } else if (callerIsAdmin) {
-        return res.status(400).json({ error: "Admin must specify orgId" });
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
-
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId: reqOrgId });
       if (!org) {
-        return res.status(400).json({ error: "Organization not found" });
+        return res.status(status || 400).json({ error: error || "Organization not found" });
       }
 
       let renewalDate: string | null = null;
@@ -301,15 +259,9 @@ export function registerPlansBillingRoutes(app: Express): void {
         return res.status(400).json({ error: "Invalid plan selected" });
       }
 
-      const org = await storage.getOrganization(orgId);
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId });
       if (!org) {
-        return res.status(400).json({ error: "Organization not found" });
-      }
-
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
-      if (!callerIsAdmin && org.ownerId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
+        return res.status(status || 400).json({ error: error || "Organization not found" });
       }
 
       if (!org.stripeSubscriptionId) {
@@ -357,15 +309,9 @@ export function registerPlansBillingRoutes(app: Express): void {
         return res.status(400).json({ error: "Organization ID is required" });
       }
 
-      const org = await storage.getOrganization(orgId);
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId });
       if (!org) {
-        return res.status(400).json({ error: "Organization not found" });
-      }
-
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
-      if (!callerIsAdmin && org.ownerId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
+        return res.status(status || 400).json({ error: error || "Organization not found" });
       }
 
       if (!org.pendingPlanId) {
@@ -393,23 +339,11 @@ export function registerPlansBillingRoutes(app: Express): void {
   app.get("/api/addon-slots", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = getUserId(req);
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
       const reqOrgId = req.query.orgId ? parseInt(req.query.orgId as string) : null;
 
-      let org;
-      if (reqOrgId) {
-        org = await storage.getOrganization(reqOrgId);
-        if (org && !callerIsAdmin && org.ownerId !== userId) {
-          return res.status(403).json({ error: "Access denied" });
-        }
-      } else if (callerIsAdmin) {
-        return res.status(400).json({ error: "Admin must specify orgId" });
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId: reqOrgId });
       if (!org) {
-        return res.status(404).json({ error: "No organization found" });
+        return res.status(status || 404).json({ error: error || "No organization found" });
       }
       const plan = org.planId ? await storage.getSubscriptionPlan(org.planId) : null;
       res.json({
@@ -428,27 +362,15 @@ export function registerPlansBillingRoutes(app: Express): void {
   app.post("/api/addon-slots", isAuthenticated, async (req: any, res: Response) => {
     try {
       const userId = getUserId(req);
-      const callerEmail = getUserEmail(req);
-      const callerIsAdmin = callerEmail && callerEmail === ADMIN_EMAIL;
       const { quantity, orgId: bodyOrgId } = req.body;
 
       if (typeof quantity !== "number" || quantity < 0 || quantity > 5 || !Number.isInteger(quantity)) {
         return res.status(400).json({ error: "Quantity must be an integer between 0 and 5" });
       }
 
-      let org;
-      if (bodyOrgId) {
-        org = await storage.getOrganization(parseInt(bodyOrgId));
-        if (org && !callerIsAdmin && org.ownerId !== userId) {
-          return res.status(403).json({ error: "Access denied" });
-        }
-      } else if (callerIsAdmin) {
-        return res.status(400).json({ error: "Admin must specify orgId" });
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
+      const { org, error, status } = await resolveOrg(userId, getUserEmail(req), { orgId: bodyOrgId });
       if (!org) {
-        return res.status(404).json({ error: "No organization found" });
+        return res.status(status || 404).json({ error: error || "No organization found" });
       }
 
       const plan = org.planId ? await storage.getSubscriptionPlan(org.planId) : null;

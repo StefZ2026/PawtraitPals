@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { pool } from "../db";
 import { isAuthenticated } from "../auth";
-import { getUserId, getUserEmail, ADMIN_EMAIL, isAdmin } from "./helpers";
+import { getUserId, getUserEmail, isAdmin, resolveOrg } from "./helpers";
 
 const AYRSHARE_API_URL = 'https://api.ayrshare.com/api';
 
@@ -43,15 +43,9 @@ export function registerInstagramRoutes(app: Express): void {
     try {
       const userId = getUserId(req);
       const email = getUserEmail(req);
-      const userIsAdmin = email === ADMIN_EMAIL;
-
       const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
-      let org;
-      if (userIsAdmin && orgIdParam) {
-        org = await storage.getOrganization(orgIdParam);
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
+
+      const { org, error, status } = await resolveOrg(userId, email, { orgId: orgIdParam });
       if (!org) return res.json({ connected: false });
 
       const result = await pool.query(
@@ -88,17 +82,11 @@ export function registerInstagramRoutes(app: Express): void {
     try {
       const userId = getUserId(req);
       const email = getUserEmail(req);
-      const userIsAdmin = email === ADMIN_EMAIL;
       const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
 
-      let orgId: number | null = null;
-      if (userIsAdmin && orgIdParam) {
-        orgId = orgIdParam;
-      } else {
-        const org = await storage.getOrganizationByOwner(userId);
-        if (org) orgId = org.id;
-      }
-      if (!orgId) return res.status(400).json({ error: "No organization found" });
+      const { org: resolvedOrg, error, status } = await resolveOrg(userId, email, { orgId: orgIdParam });
+      if (!resolvedOrg) return res.status(status || 400).json({ error: error || "No organization found" });
+      const orgId = resolvedOrg.id;
 
       const result = await pool.query(
         'SELECT ayrshare_profile_key FROM organizations WHERE id = $1',
@@ -171,7 +159,6 @@ export function registerInstagramRoutes(app: Express): void {
     try {
       const userId = getUserId(req);
       const email = getUserEmail(req);
-      const userIsAdmin = email === ADMIN_EMAIL;
       const { dogId, caption, image, orgId: bodyOrgId } = req.body;
 
       let imageToUpload: string;
@@ -181,29 +168,19 @@ export function registerInstagramRoutes(app: Express): void {
       let defaultCaption: string;
 
       if (image && bodyOrgId) {
-        org = await storage.getOrganization(parseInt(bodyOrgId));
-        if (!org) return res.status(404).json({ error: "Organization not found" });
-        if (!userIsAdmin) {
-          const userOrg = await storage.getOrganizationByOwner(userId);
-          if (!userOrg || userOrg.id !== org.id) {
-            return res.status(403).json({ error: "You don't have access to this organization" });
-          }
-        }
+        const { org: resolvedOrg, error, status } = await resolveOrg(userId, email, { orgId: parseInt(bodyOrgId) });
+        if (!resolvedOrg) return res.status(status || 404).json({ error: error || "Organization not found" });
+        org = resolvedOrg;
         imageToUpload = image;
         fileName = `showcase-${org.id}-${Date.now()}.png`;
         description = `Showcase from ${org.name}`;
         defaultCaption = caption || `Check out the adorable pets at ${org.name}! #adoptdontshop #rescuepets #pawtraitpals`;
       } else if (dogId) {
+        const { org: resolvedOrg, error, status } = await resolveOrg(userId, email, { dogId: parseInt(dogId) });
+        if (!resolvedOrg) return res.status(status || 404).json({ error: error || "Organization not found" });
+        org = resolvedOrg;
         const dog = await storage.getDog(parseInt(dogId));
         if (!dog) return res.status(404).json({ error: "Dog not found" });
-        org = await storage.getOrganization(dog.organizationId);
-        if (!org) return res.status(404).json({ error: "Organization not found" });
-        if (!userIsAdmin) {
-          const userOrg = await storage.getOrganizationByOwner(userId);
-          if (!userOrg || userOrg.id !== org.id) {
-            return res.status(403).json({ error: "You don't have access to this organization" });
-          }
-        }
         const portrait = await storage.getSelectedPortraitByDog(dog.id);
         if (!portrait || !portrait.generatedImageUrl) {
           return res.status(400).json({ error: "No portrait found for this pet" });
@@ -275,16 +252,10 @@ export function registerInstagramRoutes(app: Express): void {
     try {
       const userId = getUserId(req);
       const email = getUserEmail(req);
-      const userIsAdmin = email === ADMIN_EMAIL;
-
       const orgIdParam = req.query.orgId ? parseInt(req.query.orgId as string) : null;
-      let org;
-      if (userIsAdmin && orgIdParam) {
-        org = await storage.getOrganization(orgIdParam);
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
-      if (!org) return res.status(404).json({ error: "Organization not found" });
+
+      const { org, error, status } = await resolveOrg(userId, email, { orgId: orgIdParam });
+      if (!org) return res.status(status || 404).json({ error: error || "Organization not found" });
 
       const result = await pool.query(
         'SELECT ayrshare_profile_key FROM organizations WHERE id = $1',

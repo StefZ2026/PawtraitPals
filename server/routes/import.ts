@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { pool } from "../db";
 import { isAuthenticated } from "../auth";
-import { getUserId, getUserEmail, ADMIN_EMAIL } from "./helpers";
+import { getUserId, getUserEmail, resolveOrg } from "./helpers";
 import { normalizeBreed } from "../breeds";
 
 export async function registerImportRoutes(app: Express): Promise<void> {
@@ -87,16 +87,9 @@ export async function registerImportRoutes(app: Express): Promise<void> {
 
       // Check which ones are already imported for this user's org
       const userId = getUserId(req);
-      const email = getUserEmail(req);
-      const isAdminUser = email === ADMIN_EMAIL;
-      const orgIdParam = req.query.userOrgId ? parseInt(req.query.userOrgId as string) : null;
+      const userEmail = getUserEmail(req);
 
-      let userOrg;
-      if (isAdminUser && orgIdParam) {
-        userOrg = await storage.getOrganization(orgIdParam);
-      } else {
-        userOrg = await storage.getOrganizationByOwner(userId);
-      }
+      const { org: userOrg } = await resolveOrg(userId, userEmail, { orgId: req.query.userOrgId });
 
       if (userOrg) {
         const animalsWithStatus = await Promise.all(
@@ -126,18 +119,10 @@ export async function registerImportRoutes(app: Express): Promise<void> {
       }
 
       const userId = getUserId(req);
-      const email = getUserEmail(req);
-      const isAdminUser = email === ADMIN_EMAIL;
-      const orgIdParam = req.body.orgId ? parseInt(req.body.orgId) : null;
+      const userEmail = getUserEmail(req);
 
-      let org;
-      if (isAdminUser && orgIdParam) {
-        org = await storage.getOrganization(orgIdParam);
-      } else {
-        org = await storage.getOrganizationByOwner(userId);
-      }
-
-      if (!org) return res.status(404).json({ error: "No organization found" });
+      const { org, error, status } = await resolveOrg(userId, userEmail, { orgId: req.body.orgId });
+      if (!org) return res.status(status || 404).json({ error });
 
       // Check plan limits before importing
       const plan = org.planId ? await storage.getSubscriptionPlan(org.planId) : null;
