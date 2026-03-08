@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { isAuthenticated } from "../auth";
 import { containsInappropriateLanguage } from "@shared/content-filter";
 import { isValidBreed } from "../breeds";
-import { getUserId, getUserEmail, ADMIN_EMAIL, checkDogLimit, createDogWithPortrait } from "./helpers";
+import { getUserId, getUserEmail, ADMIN_EMAIL, checkDogLimit, createDogWithPortrait, DOG_ALLOWED_FIELDS } from "./helpers";
 
 export function registerDogRoutes(app: Express): void {
   // Public gallery (all dogs)
@@ -151,7 +151,11 @@ export function registerDogRoutes(app: Express): void {
         return res.status(403).json({ error: limitError });
       }
 
-      const { originalPhotoUrl, generatedPortraitUrl, styleId, organizationId: _orgId, ...dogData } = req.body;
+      const { originalPhotoUrl, generatedPortraitUrl, styleId, organizationId: _orgId, ...rawData } = req.body;
+      const dogData: Record<string, any> = {};
+      for (const key of DOG_ALLOWED_FIELDS) {
+        if (rawData[key] !== undefined) dogData[key] = rawData[key];
+      }
 
       if (dogData.species && !["dog", "cat"].includes(dogData.species)) {
         return res.status(400).json({ error: "species must be 'dog' or 'cat'" });
@@ -200,7 +204,15 @@ export function registerDogRoutes(app: Express): void {
         }
       }
 
-      const { selectedPortraitId, ...dogData } = req.body;
+      const { selectedPortraitId, ...rawData } = req.body;
+      const dogData: Record<string, any> = {};
+      for (const key of DOG_ALLOWED_FIELDS) {
+        if (rawData[key] !== undefined) dogData[key] = rawData[key];
+      }
+
+      if (Object.keys(dogData).length === 0 && !selectedPortraitId) {
+        return res.json(dog);
+      }
 
       if (dogData.name && containsInappropriateLanguage(dogData.name)) {
         return res.status(400).json({ error: "Please choose a family-friendly name" });
@@ -220,7 +232,7 @@ export function registerDogRoutes(app: Express): void {
         }
       }
 
-      const updatedDog = await storage.updateDog(id, dogData);
+      const updatedDog = Object.keys(dogData).length > 0 ? await storage.updateDog(id, dogData) : dog;
 
       if (selectedPortraitId) {
         await storage.selectPortraitForGallery(id, selectedPortraitId);

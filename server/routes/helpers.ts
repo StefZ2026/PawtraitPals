@@ -18,6 +18,12 @@ export const ORG_ALLOWED_FIELDS = [
   "subscriptionStatus", "stripeCustomerId", "stripeSubscriptionId", "stripeTestMode", "billingCycleStart",
 ];
 
+export const DOG_ALLOWED_FIELDS = [
+  "name", "species", "breed", "age", "description",
+  "ownerEmail", "ownerPhone", "checkedInAt", "isAvailable",
+  "adoptionUrl", "originalPhotoUrl", "externalId", "externalSource", "tags",
+];
+
 export const MAX_ADDITIONAL_SLOTS = 5;
 export const MAX_EDITS_PER_IMAGE = 4;
 
