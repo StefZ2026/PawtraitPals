@@ -24,6 +24,7 @@ import Privacy from "@/pages/privacy";
 import Terms from "@/pages/terms";
 import SmsOptIn from "@/pages/sms-opt-in";
 import ImportPets from "@/pages/import-pets";
+import ResetPassword from "@/pages/reset-password";
 
 function Router() {
   return (
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/terms" component={Terms} />
       <Route path="/sms-opt-in" component={SmsOptIn} />
       <Route path="/import" component={ImportPets} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route component={NotFound} />
     </Switch>
   );
