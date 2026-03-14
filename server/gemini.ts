@@ -1,11 +1,34 @@
+// Portrait generation engine — fal.ai Nano Banana 2 (primary)
+// Fallback: Gemini 3 Pro Image Preview
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Semaphore } from "./semaphore";
 
+// --- fal.ai setup (primary) ---
+const FAL_KEY = process.env.FAL_KEY;
+
+// --- Gemini setup (fallback) ---
 export const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
 const geminiSemaphore = new Semaphore(10);
+
+// --- Helpers ---
+
+function parseBase64(dataUrl: string): { mimeType: string; data: string } {
+  const data = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+  const mimeType = (dataUrl.match(/data:([^;]+);/) || [])[1] || "image/jpeg";
+  return { mimeType, data };
+}
+
+/** Convert a URL to a data URI */
+async function urlToDataUri(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const contentType = response.headers.get("content-type") || "image/png";
+  return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
 
 function extractImageFromResponse(response: any): string | null {
   const part = response.candidates?.[0]?.content?.parts?.find(
@@ -14,12 +37,6 @@ function extractImageFromResponse(response: any): string | null {
   if (!part?.inlineData?.data) return null;
   const mime = part.inlineData.mimeType || "image/png";
   return `data:${mime};base64,${part.inlineData.data}`;
-}
-
-function parseBase64(dataUrl: string): { mimeType: string; data: string } {
-  const data = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-  const mimeType = (dataUrl.match(/data:([^;]+);/) || [])[1] || "image/jpeg";
-  return { mimeType, data };
 }
 
 function isRetryableError(err: any): boolean {
@@ -47,10 +64,89 @@ async function callWithRetry<T>(fn: () => Promise<T>, label: string): Promise<T>
   throw new Error(`${label}: all retries exhausted`);
 }
 
-export async function generateImage(prompt: string, sourceImage?: string): Promise<string> {
+// --- fal.ai Nano Banana 2: Primary generator ---
+// Stefanie's proven prompt — DO NOT MODIFY THIS WORDING (20+ iterations to get right)
+function buildFalPrompt(styleName: string): string {
+  return `Create a ${styleName} scene using the EXACT dog from the first image. Note that the first dog does NOT have standard breed features so do not substitute or make this dog pretty. Ensure all ORIGINAL dog features are EXACTLY COPIED / PRESERVED (snout length and shape and slope, width of face (wide or narrow and fox-like), eye color and shape, ear shape and direction they point, fur color and texture, height)`;
+}
+
+export interface FalOptions {
+  dogImageUrl: string;     // Public URL of the dog's photo
+  styleImageUrl: string;   // Public URL of the style reference image
+  styleName: string;       // e.g. "Garden Party", "Renaissance Noble"
+}
+
+async function generateWithFal(options: FalOptions): Promise<string> {
+  const prompt = buildFalPrompt(options.styleName);
+  console.log(`[fal] Generating "${options.styleName}" portrait via Nano Banana 2...`);
+
+  // Submit to queue — /edit is ONLY for submit endpoint
+  const submitRes = await fetch("https://queue.fal.run/fal-ai/nano-banana-2/edit", {
+    method: "POST",
+    headers: {
+      "Authorization": `Key ${FAL_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompt,
+      image_urls: [options.dogImageUrl, options.styleImageUrl],
+    }),
+  });
+
+  if (!submitRes.ok) {
+    const errText = await submitRes.text();
+    throw new Error(`fal.ai submit failed (${submitRes.status}): ${errText}`);
+  }
+  const { request_id } = await submitRes.json();
+  console.log(`[fal] Queued request: ${request_id}`);
+
+  // Poll for completion (timeout after 120s)
+  // CRITICAL: status/result URLs do NOT include /edit
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 1500));
+    const statusRes = await fetch(
+      `https://queue.fal.run/fal-ai/nano-banana-2/requests/${request_id}/status`,
+      { headers: { "Authorization": `Key ${FAL_KEY}` } },
+    );
+    const statusData = await statusRes.json();
+    if (statusData.status === "COMPLETED") break;
+    if (statusData.status === "FAILED") {
+      throw new Error(`fal.ai generation failed: ${JSON.stringify(statusData)}`);
+    }
+  }
+
+  // Get result — NO /edit in URL
+  const resultRes = await fetch(
+    `https://queue.fal.run/fal-ai/nano-banana-2/requests/${request_id}`,
+    { headers: { "Authorization": `Key ${FAL_KEY}` } },
+  );
+  if (!resultRes.ok) throw new Error(`fal.ai result fetch failed: ${resultRes.status}`);
+  const result = await resultRes.json();
+  const imageUrl = result.images?.[0]?.url;
+  if (!imageUrl) throw new Error("fal.ai returned no image in response");
+
+  console.log(`[fal] Portrait generated successfully`);
+  // Convert to data URI for consistency with rest of codebase
+  return urlToDataUri(imageUrl);
+}
+
+// --- Main generation function ---
+
+export async function generateImage(prompt: string, sourceImage?: string, falOptions?: FalOptions): Promise<string> {
+  // Try fal.ai first if configured and style info provided
+  if (FAL_KEY && falOptions?.dogImageUrl && falOptions?.styleImageUrl && falOptions?.styleName) {
+    try {
+      return await geminiSemaphore.run(() =>
+        callWithRetry(() => generateWithFal(falOptions), "generateWithFal")
+      );
+    } catch (falErr: any) {
+      console.error("[fal] Generation failed, falling back to Gemini:", falErr.message);
+    }
+  }
+
+  // Fallback to Gemini
   if (sourceImage) {
-    // When we have a reference photo, NEVER fall back to text-only —
-    // a portrait of a random dog is worse than an error the user can retry
     const result = await generateWithImage(prompt, sourceImage);
     if (result) return result;
     throw new Error("Image generation with reference photo returned no result. Please try again.");

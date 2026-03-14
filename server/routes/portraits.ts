@@ -1,12 +1,28 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { isAuthenticated } from "../auth";
-import { generateImage, editImage } from "../gemini";
+import { generateImage, editImage, type FalOptions } from "../gemini";
+import { stylePreviewImages } from "../../client/src/lib/portrait-styles";
 import { generateShowcaseMockup, generatePawfileMockup } from "../generate-mockups";
 import { isTrialExpired } from "../subscription";
 import { getUserId, getUserEmail, sanitizeForPrompt, resolveOrg, checkDogLimit, aiRateLimiter, MAX_EDITS_PER_IMAGE } from "./helpers";
 import { uploadToStorage, isDataUri, fetchImageAsBuffer } from "../supabase-storage";
 import { enqueue, registerWorker, type Job } from "../job-queue";
+
+// --- Style reference URL resolution for fal.ai ---
+const styleImageUrlCache = new Map<string, string>();
+
+export async function getStyleReferenceUrl(previewImagePath: string): Promise<string | null> {
+  const cleanPath = previewImagePath.split("?")[0];
+  if (styleImageUrlCache.has(cleanPath)) return styleImageUrlCache.get(cleanPath)!;
+  const appUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL;
+  if (appUrl) {
+    const publicUrl = `${appUrl.replace(/\/$/, "")}${cleanPath}`;
+    styleImageUrlCache.set(cleanPath, publicUrl);
+    return publicUrl;
+  }
+  return null;
+}
 
 export function registerPortraitRoutes(app: Express): void {
   // Register the async worker that processes portrait generation and edit jobs
@@ -14,7 +30,16 @@ export function registerPortraitRoutes(app: Express): void {
     const p = job.payload;
 
     if (job.type === "generate") {
-      const generatedImageRaw = await generateImage(p.prompt, p.originalImage || undefined);
+      // Build fal.ai options if available
+      let falOptions: FalOptions | undefined;
+      if (p.dogImageUrl && p.falStyleImageUrl && p.falStyleName) {
+        falOptions = {
+          dogImageUrl: p.dogImageUrl,
+          styleImageUrl: p.falStyleImageUrl,
+          styleName: p.falStyleName,
+        };
+      }
+      const generatedImageRaw = await generateImage(p.prompt, p.originalImage || undefined, falOptions);
 
       let generatedImage = generatedImageRaw;
       try {
@@ -285,6 +310,38 @@ export function registerPortraitRoutes(app: Express): void {
         }
       }
 
+      // Resolve fal.ai style reference for this style
+      let falStyleImageUrl: string | null = null;
+      let falStyleName: string | null = null;
+      let dogImageUrl: string | null = originalImage && !isDataUri(originalImage) ? originalImage : null;
+
+      if (styleId) {
+        const parsedStyleId = parseInt(styleId);
+        const allStyles = await storage.getAllPortraitStyles();
+        const style = allStyles.find(s => s.id === parsedStyleId);
+        if (style) {
+          falStyleName = style.name;
+          const previewPath = stylePreviewImages[style.name] || style.previewImageUrl;
+          if (previewPath) {
+            try {
+              falStyleImageUrl = await getStyleReferenceUrl(previewPath);
+            } catch (err) {
+              console.error(`[portraits] Failed to resolve style reference for ${style.name}:`, err);
+            }
+          }
+        }
+      }
+
+      // If dog photo is base64, upload to Supabase so fal.ai can access it via URL
+      if (!dogImageUrl && resolvedImage && isDataUri(resolvedImage)) {
+        try {
+          const fname = `dog-photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+          dogImageUrl = await uploadToStorage(resolvedImage, "originals", fname);
+        } catch (err) {
+          console.error("[portraits] Failed to upload dog photo for fal.ai:", err);
+        }
+      }
+
       // Enqueue the generation job — returns instantly
       const jobId = enqueue("generate", {
         prompt: sanitizedPrompt,
@@ -293,6 +350,9 @@ export function registerPortraitRoutes(app: Express): void {
         dogId: dogId ? parseInt(dogId) : null,
         styleId: styleId ? parseInt(styleId) : null,
         orgId: org.id,
+        dogImageUrl,
+        falStyleImageUrl,
+        falStyleName,
         existingPortrait: existingPortrait ? {
           id: existingPortrait.id,
           editCount: existingPortrait.editCount,
